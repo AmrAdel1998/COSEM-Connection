@@ -16,7 +16,7 @@ from GXDLMSReader import GXDLMSReader
 
 # Connection
 SERIAL_PORT = "COM6"
-WAIT_TIME = 20000  # 20 seconds
+WAIT_TIME = 15000  # 5 seconds
 
 # Addressing
 CLIENT_ADDRESS = 1

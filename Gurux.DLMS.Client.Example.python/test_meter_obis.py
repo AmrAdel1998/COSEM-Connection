@@ -16,6 +16,9 @@ TEST_DATA = [
     
     # 3. Equipment Class Identifier
     ("Equipment Class Identifier - Value", "0.0.96.1.3.255", ObjectType.DATA, 2, None, "GET"),
+
+    # 4. Timeout GPRS
+    ("Timeout GPRS - Value", "0.0.94.39.52.255", ObjectType.DATA, 2, None, "GET/SET"),
 ]
 
 @pytest.fixture(scope="module")
@@ -115,7 +118,18 @@ def test_obis_read(meter_connection, name, logical_name, obj_type, attr_index, e
                 print(" -> Value matches expected.")
             else:
                 print(" -> Value read successfully (No specific value expected).")
-                
+            
+            # 4. Check SET Access (Write back same value)
+            if "SET" in access:
+                print(f" -> Testing SET access (Writing back same value: {val})...")
+                try:
+                    # For Data objects, the value is already updated in 'obj' by the read() call
+                    # reader.write uses the value currently stored in the object
+                    reader.write(obj, attr_index)
+                    print(" -> Write successful.")
+                except Exception as e:
+                    pytest.fail(f"Failed to WRITE (SET) {name}: {e}")
+
         except Exception as e:
             pytest.fail(f"Failed to read {name}: {e}")
     else:
