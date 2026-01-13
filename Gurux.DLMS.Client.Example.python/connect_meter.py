@@ -16,7 +16,7 @@ from GXDLMSReader import GXDLMSReader
 
 # Connection
 SERIAL_PORT = "COM6"
-WAIT_TIME = 15000  # 5 seconds
+WAIT_TIME = 20000  # 20 seconds
 
 # Addressing
 CLIENT_ADDRESS = 1
@@ -50,7 +50,8 @@ AUTHENTICATION_KEY_HEX = "245D0F1DF31C4380135AC91D4A22023D"
 # Standard
 DLMS_STANDARD = Standard.ITALY
 
-def main():
+def initialize_client():
+    """Initializes and returns the DLMS client, reader, and media."""
     print("Initializing DLMS Client...")
     
     # Initialize Secure Client
@@ -102,6 +103,11 @@ def main():
     reader = GXDLMSReader(client, media, TraceLevel.VERBOSE, INVOCATION_COUNTER_LN)
     reader.waitTime = WAIT_TIME
     
+    return client, reader, media
+
+def main():
+    client, reader, media = initialize_client()
+    
     try:
         print(f"Opening {SERIAL_PORT}...")
         media.open()
@@ -119,7 +125,16 @@ def main():
         # Print list of objects found
         print(f"Found {len(client.objects)} objects.")
         for obj in client.objects:
-            print(f" - {obj.logicalName} ({obj.objectType.name})")
+            obj_type_name = "Unknown"
+            try:
+                if hasattr(obj.objectType, 'name'):
+                    obj_type_name = obj.objectType.name
+                else:
+                    obj_type_name = str(obj.objectType)
+            except:
+                obj_type_name = str(obj.objectType)
+                
+            print(f" - {obj.logicalName} ({obj_type_name})")
             
         # Example: Read Clock
         # clock = client.objects.findByLN(ObjectType.CLOCK, "0.0.1.0.0.255")
