@@ -1557,7 +1557,15 @@ class _GXCommon:
             buff.setUInt16(0x8000)
         else:
             #  Add devitation.
-            d = int(dt.value.utcoffset().seconds / 60)
+            utc_offset = dt.value.utcoffset()
+            if utc_offset is None:
+                import time
+                if time.localtime().tm_isdst:
+                    d = int(-time.altzone / 60)
+                else:
+                    d = int(-time.timezone / 60)
+            else:
+                d = int(utc_offset.total_seconds() / 60)
             if not (settings and settings.useUtc2NormalTime):
                 d = -d
             buff.setUInt16(d)
