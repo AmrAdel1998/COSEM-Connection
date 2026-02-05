@@ -1407,19 +1407,19 @@ class _GXCommon:
     def setTime(cls, buff, value):
         dt = _GXCommon.__getDateTime(value)
         #  Add time.
-        if dt.skip & DateTimeSkips.HOUR != DateTimeSkips.NONE:
+        if dt.skip & DateTimeSkips.HOUR != DateTimeSkips.NONE or dt.value is None:
             buff.setUInt8(0xFF)
         else:
             buff.setUInt8(dt.value.hour)
-        if dt.skip & DateTimeSkips.MINUTE != DateTimeSkips.NONE:
+        if dt.skip & DateTimeSkips.MINUTE != DateTimeSkips.NONE or dt.value is None:
             buff.setUInt8(0xFF)
         else:
             buff.setUInt8(dt.value.minute)
-        if dt.skip & DateTimeSkips.SECOND != DateTimeSkips.NONE:
+        if dt.skip & DateTimeSkips.SECOND != DateTimeSkips.NONE or dt.value is None:
             buff.setUInt8(0xFF)
         else:
             buff.setUInt8(dt.value.second)
-        if dt.skip & DateTimeSkips.MILLISECOND != DateTimeSkips.NONE:
+        if dt.skip & DateTimeSkips.MILLISECOND != DateTimeSkips.NONE or dt.value is None:
             #  Hundredth of seconds is not used.
             buff.setUInt8(0xFF)
         else:
@@ -1440,7 +1440,7 @@ class _GXCommon:
     def setDate(cls, buff, value):
         dt = _GXCommon.__getDateTime(value)
         #  Add year.
-        if dt.skip & DateTimeSkips.YEAR != DateTimeSkips.NONE:
+        if dt.skip & DateTimeSkips.YEAR != DateTimeSkips.NONE or dt.value is None:
             buff.setUInt16(0xFFFF)
         else:
             buff.setUInt16(dt.value.year)
@@ -1449,7 +1449,7 @@ class _GXCommon:
             buff.setUInt8(0xFE)
         elif dt.extra & DateTimeExtraInfo.DST_END != 0:
             buff.setUInt8(0xFD)
-        elif dt.skip & DateTimeSkips.MONTH != 0:
+        elif dt.skip & DateTimeSkips.MONTH != 0 or dt.value is None:
             buff.setUInt8(0xFF)
         else:
             buff.setUInt8(dt.value.month)
@@ -1458,7 +1458,7 @@ class _GXCommon:
             buff.setUInt8(0xFD)
         elif dt.extra & DateTimeExtraInfo.LAST_DAY != DateTimeSkips.NONE:
             buff.setUInt8(0xFE)
-        elif dt.skip & DateTimeSkips.DAY != DateTimeSkips.NONE:
+        elif dt.skip & DateTimeSkips.DAY != DateTimeSkips.NONE or dt.value is None:
             buff.setUInt8(0xFF)
         else:
             buff.setUInt8(dt.value.day)
@@ -1467,7 +1467,9 @@ class _GXCommon:
         if dt.skip & DateTimeSkips.DAY_OF_WEEK != DateTimeSkips.NONE:
             buff.setUInt8(0xFF)
         else:
-            if dt.dayOfWeek == 0:
+            if dt.value is None:
+                buff.setUInt8(dt.dayOfWeek)
+            elif dt.dayOfWeek == 0:
                 buff.setUInt8(dt.value.weekday() + 1)
             else:
                 buff.setUInt8(dt.dayOfWeek)
@@ -1475,7 +1477,9 @@ class _GXCommon:
     @classmethod
     def __getDateTime(cls, value):
         dt = None
-        if isinstance(value, (GXDateTime)):
+        if value is None:
+            dt = GXDateTime()
+        elif isinstance(value, (GXDateTime)):
             dt = value
         elif isinstance(value, (datetime, str)):
             dt = GXDateTime(value)
@@ -1500,7 +1504,7 @@ class _GXCommon:
             skip = skip or settings.dateTimeSkips
 
         #  Add year.
-        if skip & DateTimeSkips.YEAR != DateTimeSkips.NONE:
+        if skip & DateTimeSkips.YEAR != DateTimeSkips.NONE or dt.value is None:
             buff.setUInt16(0xFFFF)
         else:
             buff.setUInt16(dt.value.year)
@@ -1509,7 +1513,7 @@ class _GXCommon:
             buff.setUInt8(0xFD)
         elif dt.extra & DateTimeExtraInfo.DST_END != 0:
             buff.setUInt8(0xFE)
-        elif skip & DateTimeSkips.MONTH != DateTimeSkips.NONE:
+        elif skip & DateTimeSkips.MONTH != DateTimeSkips.NONE or dt.value is None:
             buff.setUInt8(0xFF)
         else:
             buff.setUInt8(dt.value.month)
@@ -1519,7 +1523,7 @@ class _GXCommon:
             buff.setUInt8(0xFD)
         elif dt.extra & DateTimeExtraInfo.LAST_DAY != DateTimeSkips.NONE:
             buff.setUInt8(0xFE)
-        elif skip & DateTimeSkips.DAY != DateTimeSkips.NONE:
+        elif skip & DateTimeSkips.DAY != DateTimeSkips.NONE or dt.value is None:
             buff.setUInt8(0xFF)
         else:
             buff.setUInt8(dt.value.day)
@@ -1527,24 +1531,26 @@ class _GXCommon:
         if skip & DateTimeSkips.DAY_OF_WEEK != DateTimeSkips.NONE:
             buff.setUInt8(0xFF)
         else:
-            if dt.dayOfWeek == 0:
+            if dt.value is None:
+                buff.setUInt8(dt.dayOfWeek)
+            elif dt.dayOfWeek == 0:
                 buff.setUInt8(dt.value.weekday() + 1)
             else:
                 buff.setUInt8(dt.dayOfWeek)
         #  Add time.
-        if skip & DateTimeSkips.HOUR != DateTimeSkips.NONE:
+        if skip & DateTimeSkips.HOUR != DateTimeSkips.NONE or dt.value is None:
             buff.setUInt8(0xFF)
         else:
             buff.setUInt8(dt.value.hour)
-        if skip & DateTimeSkips.MINUTE != DateTimeSkips.NONE:
+        if skip & DateTimeSkips.MINUTE != DateTimeSkips.NONE or dt.value is None:
             buff.setUInt8(0xFF)
         else:
             buff.setUInt8(dt.value.minute)
-        if skip & DateTimeSkips.SECOND != DateTimeSkips.NONE:
+        if skip & DateTimeSkips.SECOND != DateTimeSkips.NONE or dt.value is None:
             buff.setUInt8(0xFF)
         else:
             buff.setUInt8(dt.value.second)
-        if skip & DateTimeSkips.MILLISECOND != DateTimeSkips.NONE:
+        if skip & DateTimeSkips.MILLISECOND != DateTimeSkips.NONE or dt.value is None:
             #  Hundredth of seconds is not used.
             buff.setUInt8(0xFF)
         else:
@@ -1553,7 +1559,7 @@ class _GXCommon:
                 ms /= 10000
             buff.setUInt8(int(ms))
         #  devitation not used.
-        if skip & DateTimeSkips.DEVITATION != DateTimeSkips.NONE:
+        if skip & DateTimeSkips.DEVITATION != DateTimeSkips.NONE or dt.value is None:
             buff.setUInt16(0x8000)
         else:
             #  Add devitation.
@@ -1571,7 +1577,9 @@ class _GXCommon:
             buff.setUInt16(d)
         #  Add clock_status
         if skip & DateTimeSkips.STATUS == DateTimeSkips.NONE:
-            if (
+            if dt.value is None:
+                buff.setUInt8(dt.status)
+            elif (
                 dt.value.dst()
                 or dt.status & ClockStatus.DAYLIGHT_SAVE_ACTIVE != ClockStatus.OK
             ):

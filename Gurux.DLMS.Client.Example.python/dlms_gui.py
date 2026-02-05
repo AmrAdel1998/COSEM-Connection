@@ -8,6 +8,7 @@ import io
 import subprocess
 import tkinter.font as tkfont
 from gurux_common.enums import TraceLevel
+from gurux_common import ReceiveParameters
 from gurux_common.io import Parity, StopBits, BaudRate
 from gurux_dlms.enums import InterfaceType, Authentication, Security, Standard, DataType, ObjectType
 from gurux_dlms import GXDLMSClient
@@ -19,6 +20,7 @@ from gurux_dlms.GXDLMSConverter import GXDLMSConverter
 from gurux_dlms.GXDateTime import GXDateTime
 import urllib.parse
 import pytest
+import serial.tools.list_ports
 try:
     import requests
 except Exception:
@@ -40,12 +42,30 @@ class DLMSGUI:
         self._build_ui()
 
     def _build_ui(self):
-        container = tk.PanedWindow(self.root, orient="horizontal")
+        container = ttk.PanedWindow(self.root, orient="horizontal")
         container.pack(fill="both", expand=True)
         notebook = ttk.Notebook(container)
-        logo_canvas = tk.Canvas(container, width=220, highlightthickness=0)
-        container.add(notebook)
-        container.add(logo_canvas)
+        
+        # Right sidebar with Logo and Terminal
+        right_pane = ttk.PanedWindow(container, orient="vertical")
+        
+        container.add(notebook, weight=4)
+        container.add(right_pane, weight=1)
+        
+        logo_canvas = tk.Canvas(right_pane, height=150, highlightthickness=0)
+        right_pane.add(logo_canvas, weight=0)
+        
+        term_frame = ttk.LabelFrame(right_pane, text="TX/RX Terminal")
+        right_pane.add(term_frame, weight=1)
+        
+        self.terminal = tk.Text(term_frame, wrap="none", font=("Consolas", 9))
+        term_sy = ttk.Scrollbar(term_frame, orient="vertical", command=self.terminal.yview)
+        term_sx = ttk.Scrollbar(term_frame, orient="horizontal", command=self.terminal.xview)
+        self.terminal.configure(yscrollcommand=term_sy.set, xscrollcommand=term_sx.set)
+        term_sy.pack(side="right", fill="y")
+        term_sx.pack(side="bottom", fill="x")
+        self.terminal.pack(side="left", fill="both", expand=True)
+        
         self._build_logo_sidebar(logo_canvas)
         eng_tab = ttk.Frame(notebook)
         mgr_tab = ttk.Frame(notebook)
@@ -55,19 +75,27 @@ class DLMSGUI:
         eng_nb.pack(fill="both", expand=True)
         cfg_tab = ttk.Frame(eng_nb)
         obis_tab = ttk.Frame(eng_nb)
+        raw_tab = ttk.Frame(eng_nb)
         tests_tab = ttk.Frame(eng_nb)
         bugs_tab = ttk.Frame(eng_nb)
         eng_nb.add(cfg_tab, text="Configuration")
         eng_nb.add(obis_tab, text="OBIS")
+        eng_nb.add(raw_tab, text="Manual HDLC")
         eng_nb.add(tests_tab, text="Tests")
         eng_nb.add(bugs_tab, text="Bugs")
+        
+        self._build_raw_tab(raw_tab)
         obis_canvas, obis_inner = self._make_scrollable_tab(obis_tab)
         self._add_watermark(obis_canvas)
         top = ttk.Frame(cfg_tab)
         top.pack(fill="x")
         ttk.Label(top, text="COM Port").grid(row=0, column=0, sticky="w")
         self.port_var = tk.StringVar(value="COM6")
-        ttk.Entry(top, textvariable=self.port_var, width=12).grid(row=0, column=1, sticky="w")
+        ports = sorted([p.device for p in serial.tools.list_ports.comports()])
+        port_cb = ttk.Combobox(top, textvariable=self.port_var, values=ports, width=12)
+        port_cb.grid(row=0, column=1, sticky="w")
+        if ports and "COM6" not in ports:
+             port_cb.current(0)
         ttk.Label(top, text="Client").grid(row=0, column=2, sticky="w")
         self.client_var = tk.IntVar(value=1)
         ttk.Entry(top, textvariable=self.client_var, width=6).grid(row=0, column=3, sticky="w")
@@ -83,8 +111,8 @@ class DLMSGUI:
         ttk.Label(top, text="Security").grid(row=0, column=10, sticky="w")
         self.sec_var = tk.StringVar(value="AUTHENTICATION_ENCRYPTION")
         ttk.Combobox(top, textvariable=self.sec_var, values=["NONE","AUTHENTICATION","ENCRYPTION","AUTHENTICATION_ENCRYPTION"], width=24).grid(row=0, column=11, sticky="w")
-        ttk.Label(top, text="SystemTitle").grid(row=1, column=0, sticky="w")
-        self.st_var = tk.StringVar(value="5341435341435341")
+        ttk.Label(top, text="SystemTitle (Hex/Str)").grid(row=1, column=0, sticky="w")
+        self.st_var = tk.StringVar(value="SACSACSA")
         ttk.Entry(top, textvariable=self.st_var, width=24).grid(row=1, column=1, columnspan=2, sticky="w")
         ttk.Label(top, text="BlockKey").grid(row=1, column=3, sticky="w")
         self.bk_var = tk.StringVar(value="7ADF639CA79632FCA3D7810BE6416ABE")
@@ -118,6 +146,7 @@ class DLMSGUI:
         self.sel_ln = tk.StringVar()
         ttk.Entry(right, textvariable=self.sel_ln, width=24).grid(row=0, column=1, sticky="w")
         ttk.Button(right, text="Refresh OBIS", command=self.refresh_obis).grid(row=1, column=0, sticky="w")
+        ttk.Button(right, text="Select Object", command=self.select_obis_object).grid(row=1, column=1, sticky="w")
         ttk.Label(right, text="Type Meaning").grid(row=2, column=0, sticky="w")
         self.type_desc_label = ttk.Label(right, text="", wraplength=320)
         self.type_desc_label.grid(row=2, column=1, sticky="w")
@@ -142,6 +171,7 @@ class DLMSGUI:
         attrs_scroll.pack(side="right", fill="y")
         self.attrs_tree.configure(yscrollcommand=attrs_scroll.set)
         self.attrs_tree.bind("<<TreeviewSelect>>", self._on_attr_select)
+        self.attrs_tree.bind("<Double-1>", lambda e: self.read_selected_attr())
         attr_ops = ttk.Frame(rights_frame)
         attr_ops.pack(fill="x")
         ttk.Label(attr_ops, text="Selected attribute editor").grid(row=0, column=0, sticky="w")
@@ -182,23 +212,16 @@ class DLMSGUI:
         self.method_value_entry.grid(row=0, column=3, sticky="w")
         self.run_method_btn = ttk.Button(method_ops, text="Run Method", command=self.run_selected_method)
         self.run_method_btn.grid(row=0, column=4, sticky="w")
-        ttk.Label(rights_frame, text="OBIS Console").pack(anchor="w")
-        obis_console_frame = ttk.Frame(rights_frame)
-        obis_console_frame.pack(fill="both", expand=True)
-        self.obis_console = tk.Text(obis_console_frame, height=8)
-        self.obis_console.pack(side="left", fill="both", expand=True)
-        obis_scroll = ttk.Scrollbar(obis_console_frame, orient="vertical", command=self.obis_console.yview)
-        obis_scroll.pack(side="right", fill="y")
-        self.obis_console.configure(yscrollcommand=obis_scroll.set)
-        console_frame = ttk.Frame(cfg_tab)
-        console_frame.pack(fill="both", expand=True)
-        self.console = tk.Text(console_frame, height=12)
-        self.console.pack(side="left", fill="both", expand=True)
-        main_scroll = ttk.Scrollbar(console_frame, orient="vertical", command=self.console.yview)
-        main_scroll.pack(side="right", fill="y")
-        self.console.configure(yscrollcommand=main_scroll.set)
-        ttk.Button(console_frame, text="Export Console", command=self.export_console).pack(side="left")
-        self.tree.bind("<<TreeviewSelect>>", self._on_select)
+        # OBIS Console removed
+        # console_frame = ttk.Frame(cfg_tab)
+        # console_frame.pack(fill="both", expand=True)
+        # self.console = tk.Text(console_frame, height=12)
+        # self.console.pack(side="left", fill="both", expand=True)
+        # main_scroll = ttk.Scrollbar(console_frame, orient="vertical", command=self.console.yview)
+        # main_scroll.pack(side="right", fill="y")
+        # self.console.configure(yscrollcommand=main_scroll.set)
+        # ttk.Button(console_frame, text="Export Console", command=self.export_console).pack(side="left")
+        self.tree.bind("<Double-1>", self._on_select)
         tests_top = ttk.Frame(tests_tab)
         tests_top.pack(fill="x")
         ttk.Button(tests_top, text="Add Test File", command=self.add_test_file).pack(side="left")
@@ -209,6 +232,7 @@ class DLMSGUI:
         tests_btns.pack(fill="x")
         ttk.Button(tests_btns, text="Collect Tests", command=self.collect_tests).pack(side="left")
         ttk.Button(tests_btns, text="Run Selected", command=self.run_selected_tests).pack(side="left")
+        ttk.Button(tests_btns, text="Run All", command=self.run_all_tests).pack(side="left")
         bugs_top = ttk.Frame(bugs_tab)
         bugs_top.pack(fill="x")
         ttk.Label(bugs_top, text="Azure URL (full)").grid(row=0, column=0, sticky="w")
@@ -254,8 +278,14 @@ class DLMSGUI:
             pass
 
     def _trace(self, s):
-        self.console.insert("end", s + "\n")
-        self.console.see("end")
+        try:
+            self.terminal.insert("end", s + "\n")
+            self.terminal.see("end")
+            if hasattr(self, "console"):
+                self.console.insert("end", s + "\n")
+                self.console.see("end")
+        except Exception:
+            pass
 
     def _tail_log(self):
         pos = 0
@@ -285,7 +315,11 @@ class DLMSGUI:
             client.authentication = getattr(Authentication, auth_name)
             sec_name = self.sec_var.get()
             client.ciphering.security = getattr(Security, sec_name)
-            client.ciphering.systemTitle = GXByteBuffer.hexToBytes(self.st_var.get())
+            st_val = self.st_var.get()
+            try:
+                client.ciphering.systemTitle = GXByteBuffer.hexToBytes(st_val)
+            except Exception:
+                client.ciphering.systemTitle = st_val.encode()
             client.ciphering.blockCipherKey = GXByteBuffer.hexToBytes(self.bk_var.get())
             client.ciphering.authenticationKey = GXByteBuffer.hexToBytes(self.ak_var.get())
             std_name = self.std_var.get()
@@ -297,7 +331,7 @@ class DLMSGUI:
             media.dataBits = 7
             media.parity = Parity.EVEN
             media.stopBits = StopBits.ONE
-            reader = GXDLMSReader(client, media, TraceLevel.VERBOSE, "0.0.43.1.0.255")
+            reader = GXDLMSReader(client, media, TraceLevel.VERBOSE, "0.0.43.1.0.255", trace_callback=self._trace)
             self.client = client
             self.reader = reader
             self.media = media
@@ -333,8 +367,8 @@ class DLMSGUI:
             self.rights_tree.delete(*self.rights_tree.get_children())
         if hasattr(self, "methods_tree"):
             self.methods_tree.delete(*self.methods_tree.get_children())
-        if hasattr(self, "obis_console"):
-            self.obis_console.delete("1.0","end")
+        if hasattr(self, "terminal"):
+            self.terminal.delete("1.0","end")
 
     def refresh_obis(self):
         try:
@@ -351,6 +385,9 @@ class DLMSGUI:
                 self.tree.item(p, open=True)
         except Exception as e:
             messagebox.showerror("Error", str(e))
+
+    def select_obis_object(self):
+        self._on_select(None)
 
     def _on_select(self, event):
         sel = self.tree.selection()
@@ -381,8 +418,8 @@ class DLMSGUI:
                 return
             val = self.reader.read(obj, idx)
             self._trace(f"Read {ln} [{idx}] = {val}")
-            self.obis_console.insert("end", f"Read {ln} [{idx}] = {val}\n")
-            self.obis_console.see("end")
+            self.terminal.insert("end", f"Read {ln} [{idx}] = {val}\n")
+            self.terminal.see("end")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
@@ -400,8 +437,8 @@ class DLMSGUI:
             val = self.reader.read(obj, idx)
             self.reader.write(obj, idx)
             self._trace(f"Wrote {ln} [{idx}] same value {val}")
-            self.obis_console.insert("end", f"Wrote {ln} [{idx}] same value {val}\n")
-            self.obis_console.see("end")
+            self.terminal.insert("end", f"Wrote {ln} [{idx}] same value {val}\n")
+            self.terminal.see("end")
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
@@ -572,8 +609,8 @@ class DLMSGUI:
             for i in range(1, count + 1):
                 try:
                     s = self._access_str(obj.getAccess3(i))
-                    if tname in self._forced_rights and i in self._forced_rights[tname]:
-                        s = self._forced_rights[tname][i]
+                    # if tname in self._forced_rights and i in self._forced_rights[tname]:
+                    #    s = self._forced_rights[tname][i]
                     nm = names.get(i, f"Attribute {i}")
                     val = ""
                     dtname = ""
@@ -628,8 +665,8 @@ class DLMSGUI:
             count = self._attr_count_map.get(tname, 20)
             if idx < 1 or idx > count:
                 return False
-            if tname in self._forced_rights and idx in self._forced_rights[tname]:
-                s = self._forced_rights[tname][idx]
+            # if tname in self._forced_rights and idx in self._forced_rights[tname]:
+            #    s = self._forced_rights[tname][idx]
             return s in ("SET","GET/SET")
         except Exception:
             return False
@@ -733,14 +770,16 @@ class DLMSGUI:
                 messagebox.showerror("Error", f"Access denied: Attr {idx} is not readable")
                 return
             val = self.reader.read(obj, idx)
-            self.obis_console.insert("end", f"Read {ln} [{idx}] = {val}\n")
-            self.obis_console.see("end")
+            self.terminal.insert("end", f"Read {ln} [{idx}] = {val}\n")
+            self.terminal.see("end")
             # Update value column
             vals = list(self.attrs_tree.item(sel[0], "values"))
             # value column is last index (4)
             if len(vals) >= 5:
                 vals[4] = str(val)
             self.attrs_tree.item(sel[0], values=vals)
+            # Update editor with read value
+            self._build_dynamic_editor_for(obj, idx, value=val)
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
@@ -756,26 +795,40 @@ class DLMSGUI:
                 messagebox.showinfo("Info", "Select attribute in table")
                 return
             idx = int(self.attrs_tree.item(sel[0], "values")[0])
+            
+            # Detailed access check
             if not self._can_write(obj, idx):
-                messagebox.showerror("Error", f"Access denied: Attr {idx} is not writable")
+                access_byte = obj.getAccess3(idx)
+                access_str = self._access_str(access_byte)
+                messagebox.showerror("Error", f"Access denied for {ln} Attribute {idx}.\nCurrent Access Right: {access_str}\nRequired: SET or GET/SET")
                 return
+
             dt = obj.getUIDataType(idx) if hasattr(obj, "getUIDataType") else obj.getDataType(idx)
             # Handle unknown dt by inferring from current value or heuristic.
             if hasattr(dt, "name") and dt.name == "NONE" or (not hasattr(dt, "name") and int(dt) == int(DataType.NONE)):
                 s = str(self._editor_var.get()).strip()
                 new_val = self._infer_value_for_none(obj, idx, s)
             else:
-                new_val = self._get_editor_value(dt)
+                try:
+                    new_val = self._get_editor_value(dt)
+                except ValueError as ve:
+                    messagebox.showerror("Error", f"Invalid value format for {self._dtype_name(dt)}:\n{ve}")
+                    return
+
             if not self._apply_value(obj, idx, new_val):
-                messagebox.showerror("Error", "Unsupported object write for this attribute")
+                messagebox.showerror("Error", f"Failed to prepare value for {ln} Attribute {idx}.\nEnsure the attribute is supported for writing in this tool.")
                 return
-            self.reader.write(obj, idx)
-            self.obis_console.insert("end", f"Wrote {ln} [{idx}] value {new_val}\n")
-            self.obis_console.see("end")
-            vals = list(self.attrs_tree.item(sel[0], "values"))
-            if len(vals) >= 5:
-                vals[4] = str(new_val)
-            self.attrs_tree.item(sel[0], values=vals)
+            
+            try:
+                self.reader.write(obj, idx)
+                self.terminal.insert("end", f"Wrote {ln} [{idx}] value {new_val}\n")
+                self.terminal.see("end")
+                vals = list(self.attrs_tree.item(sel[0], "values"))
+                if len(vals) >= 5:
+                    vals[4] = str(new_val)
+                self.attrs_tree.item(sel[0], values=vals)
+            except Exception as e:
+                messagebox.showerror("Write Error", f"Device rejected write request:\n{str(e)}\n\nCheck:\n- Access Rights (HighGMAC?)\n- Value Range/Type\n- Device State")
         except ValueError as ve:
             messagebox.showerror("Error", f"Type error: {ve}")
         except Exception as e:
@@ -877,18 +930,27 @@ class DLMSGUI:
         self._editor_kind = None
         self._editor_var = None
 
-    def _build_dynamic_editor_for(self, obj, idx):
+    def _build_dynamic_editor_for(self, obj, idx, value=None):
         try:
             self._clear_editor()
             if not obj:
                 return
+            
+            tname = self._type_name(obj.objectType)
+            # Smart shortcuts for complex objects
+            if tname == "IMAGE_TRANSFER":
+                ttk.Label(self.edit_frame, text="Firmware update requires advanced editor").grid(row=0, column=0, sticky="w")
+                ttk.Button(self.edit_frame, text="Open Firmware Update", command=self.open_advanced_editor).grid(row=0, column=1, sticky="w", padx=5)
+                return
+            if tname == "CLOCK" and idx == 2:
+                ttk.Button(self.edit_frame, text="Open Date/Time Editor", command=self.open_advanced_editor).grid(row=0, column=2, sticky="w", padx=5)
+            
             dt = obj.getUIDataType(idx) if hasattr(obj, "getUIDataType") else obj.getDataType(idx)
             # Current value
             cur = ""
-            try:
-                cur = str(self.reader.read(obj, idx))
-            except Exception:
-                cur = ""
+            if value is not None:
+                cur = str(value)
+            
             v = int(dt)
             if v == int(DataType.BOOLEAN):
                 self._editor_kind = "bool"
@@ -948,6 +1010,8 @@ class DLMSGUI:
         except Exception:
             raise ValueError("GXDateTime not available")
         text = self._normalize_datetime_input(text)
+        if not text:
+            raise ValueError("Empty date/time input")
         patts = []
         if kind == "datetime":
             patts = ["%Y-%m-%d %H:%M:%S", "%m/%d/%Y %H:%M:%S", "%m/%d/%y %H:%M:%S"]
@@ -1039,23 +1103,46 @@ class DLMSGUI:
                 messagebox.showinfo("Info", "Select attribute in table")
                 return
             idx = int(self.attrs_tree.item(sel[0], "values")[0])
-            dt = obj.getUIDataType(idx) if hasattr(obj, "getUIDataType") else obj.getDataType(idx)
+            
             win = tk.Toplevel(self.root)
-            win.title(f"Advanced Editor - {ln} [{idx}]")
+            win.title(f"Edit {ln} Attribute {idx}")
+            win.geometry("600x500")
+            win.transient(self.root)
+            win.grab_set()
+            
             nb = ttk.Notebook(win)
-            nb.pack(fill="both", expand=True)
-            # Basic tab shows current raw value
+            nb.pack(fill="both", expand=True, padx=5, pady=5)
+            
+            # Basic tab
             tab_basic = ttk.Frame(nb)
             nb.add(tab_basic, text="Basic")
+            
+            # Toolbar for Basic
+            toolbar = ttk.Frame(tab_basic)
+            toolbar.pack(fill="x", padx=5, pady=5)
+            
             cur_val = ""
+            def _read_val():
+                try:
+                    v = self.reader.read(obj, idx)
+                    txt.delete("1.0", "end")
+                    txt.insert("end", str(v))
+                except Exception as e:
+                    messagebox.showerror("Error", str(e))
+            
+            ttk.Button(toolbar, text="Read", command=_read_val).pack(side="left")
+            
+            ttk.Label(tab_basic, text="Value (Raw)").pack(anchor="w", padx=5)
+            txt = tk.Text(tab_basic, height=10)
+            txt.pack(fill="both", expand=True, padx=5, pady=5)
+            
+            # Initial read
             try:
                 cur_val = str(self.reader.read(obj, idx))
+                txt.insert("end", cur_val)
             except Exception:
-                cur_val = ""
-            ttk.Label(tab_basic, text="Current value").pack(anchor="w")
-            txt = tk.Text(tab_basic, height=6)
-            txt.insert("end", cur_val)
-            txt.pack(fill="both", expand=True)
+                pass
+            
             # Specialized tabs
             tname = self._type_name(obj.objectType)
             if tname == "PUSH_SETUP":
@@ -1064,7 +1151,14 @@ class DLMSGUI:
                 self._adv_build_disconnect_tabs(nb, obj, idx)
             elif tname == "CLOCK":
                 self._adv_build_clock_tabs(nb, obj, idx)
-            ttk.Button(win, text="Close", command=win.destroy).pack(side="right", padx=8, pady=8)
+            elif tname == "IMAGE_TRANSFER":
+                self._adv_build_image_transfer_tabs(nb, obj, idx)
+            
+            # Bottom buttons
+            bbox = ttk.Frame(win)
+            bbox.pack(fill="x", padx=10, pady=10)
+            ttk.Button(bbox, text="Close", command=win.destroy).pack(side="right")
+            
         except Exception as e:
             messagebox.showerror("Error", str(e))
     def _adv_build_pushsetup_tabs(self, nb, obj, idx):
@@ -1128,8 +1222,8 @@ class DLMSGUI:
                 try:
                     obj.pushObjectList = new_list
                     self.reader.write(obj, 2)
-                    self.obis_console.insert("end", f"Applied PushSetup object list ({len(new_list)} items)\n")
-                    self.obis_console.see("end")
+                    self.terminal.insert("end", f"Applied PushSetup object list ({len(new_list)} items)\n")
+                    self.terminal.see("end")
                 except Exception as e:
                     messagebox.showerror("Error", str(e))
             ttk.Button(btns, text="Add", command=_add).pack(side="left")
@@ -1173,8 +1267,8 @@ class DLMSGUI:
                         wins.append((k, v))
                     obj.communicationWindow = wins
                     self.reader.write(obj, 4)
-                    self.obis_console.insert("end", f"Applied PushSetup communication windows ({len(wins)})\n")
-                    self.obis_console.see("end")
+                    self.terminal.insert("end", f"Applied PushSetup communication windows ({len(wins)})\n")
+                    self.terminal.see("end")
                 except Exception as e:
                     messagebox.showerror("Error", str(e))
             wbtns = ttk.Frame(tab_win)
@@ -1197,8 +1291,8 @@ class DLMSGUI:
                     if hasattr(obj, "controlMode"):
                         obj.controlMode = val
                     self.reader.write(obj, 3)
-                    self.obis_console.insert("end", f"Applied Disconnect control mode {val}\n")
-                    self.obis_console.see("end")
+                    self.terminal.insert("end", f"Applied Disconnect control mode {val}\n")
+                    self.terminal.see("end")
                 except Exception as e:
                     messagebox.showerror("Error", str(e))
             ttk.Button(tab, text="Apply", command=_apply).pack(anchor="e")
@@ -1218,13 +1312,148 @@ class DLMSGUI:
                 try:
                     obj.time = self._to_gx_datetime(tm.get().strip(), "datetime")
                     self.reader.write(obj, 2)
-                    self.obis_console.insert("end", f"Applied Clock time {tm.get().strip()}\n")
-                    self.obis_console.see("end")
+                    self.terminal.insert("end", f"Applied Clock time {tm.get().strip()}\n")
+                    self.terminal.see("end")
                 except Exception as e:
                     messagebox.showerror("Error", str(e))
             ttk.Button(tab, text="Apply", command=_apply).pack(anchor="e")
         except Exception:
             pass
+
+    def _adv_build_image_transfer_tabs(self, nb, obj, idx):
+        try:
+            tab = ttk.Frame(nb)
+            nb.add(tab, text="Firmware Update")
+            
+            # File selection
+            file_frame = ttk.LabelFrame(tab, text="Image File")
+            file_frame.pack(fill="x", padx=5, pady=5)
+            
+            self.img_path = tk.StringVar()
+            ttk.Entry(file_frame, textvariable=self.img_path).pack(side="left", fill="x", expand=True, padx=5, pady=5)
+            def _browse():
+                path = filedialog.askopenfilename(filetypes=[("Binary Files","*.bin"), ("All Files","*.*")])
+                if path:
+                    self.img_path.set(path)
+            ttk.Button(file_frame, text="Browse...", command=_browse).pack(side="right", padx=5, pady=5)
+            
+            # Transfer controls
+            ctrl_frame = ttk.LabelFrame(tab, text="Transfer Control")
+            ctrl_frame.pack(fill="x", padx=5, pady=5)
+            
+            ttk.Label(ctrl_frame, text="Block Size:").grid(row=0, column=0, sticky="w", padx=5, pady=5)
+            self.blk_size_var = tk.IntVar(value=getattr(obj, "imageBlockSize", 100))
+            ttk.Entry(ctrl_frame, textvariable=self.blk_size_var, width=10).grid(row=0, column=1, sticky="w", padx=5, pady=5)
+            
+            self.progress_var = tk.DoubleVar(value=0)
+            self.progress_bar = ttk.Progressbar(ctrl_frame, variable=self.progress_var, maximum=100)
+            self.progress_bar.grid(row=1, column=0, columnspan=3, sticky="ew", padx=5, pady=5)
+            
+            self.status_lbl = ttk.Label(ctrl_frame, text="Ready")
+            self.status_lbl.grid(row=2, column=0, columnspan=3, sticky="w", padx=5, pady=5)
+            
+            def _start_transfer():
+                path = self.img_path.get()
+                if not path or not os.path.exists(path):
+                    messagebox.showerror("Error", "Select valid file")
+                    return
+                try:
+                    blk_size = self.blk_size_var.get()
+                    if blk_size <= 0:
+                        raise ValueError("Invalid block size")
+                    obj.imageBlockSize = blk_size
+                except Exception:
+                     messagebox.showerror("Error", "Invalid block size")
+                     return
+                
+                self.start_btn.state(["disabled"])
+                self.status_lbl.config(text="Starting transfer...")
+                self.progress_var.set(0)
+                
+                threading.Thread(target=self._run_image_transfer, args=(obj, path), daemon=True).start()
+
+            self.start_btn = ttk.Button(ctrl_frame, text="Start Transfer", command=_start_transfer)
+            self.start_btn.grid(row=0, column=2, sticky="e", padx=5, pady=5)
+
+        except Exception as e:
+            messagebox.showerror("Error", str(e))
+
+    def _run_image_transfer(self, obj, path):
+        try:
+            from gurux_dlms.internal._GXCommon import _GXCommon
+            from gurux_dlms.GXReplyData import GXReplyData
+            
+            with open(path, "rb") as f:
+                content = f.read()
+            
+            total_size = len(content)
+            blk_size = obj.imageBlockSize
+            
+            # 1. Initiate
+            self.root.after(0, lambda: self.status_lbl.config(text="Initiating transfer..."))
+            self.root.after(0, lambda: self.terminal.insert("end", f"Initiating Image Transfer. Size: {total_size}, Block: {blk_size}\n"))
+            
+            ident = os.path.basename(path)
+            if len(ident) > 10: ident = ident[:10]
+            
+            reqs = obj.imageTransferInitiate(self.client, ident, total_size)
+            self._send_dlms_reqs(reqs, "Initiate")
+            
+            # 2. Transfer blocks
+            blocks = []
+            for i in range(0, total_size, blk_size):
+                chunk = content[i:i+blk_size]
+                blocks.append(chunk)
+            
+            total_blocks = len(blocks)
+            self.root.after(0, lambda: self.terminal.insert("end", f"Total blocks to send: {total_blocks}\n"))
+            
+            for i, chunk in enumerate(blocks):
+                 pct = (i / total_blocks) * 100
+                 self.root.after(0, lambda p=pct: self.progress_var.set(p))
+                 self.root.after(0, lambda i=i: self.status_lbl.config(text=f"Sending block {i+1}/{total_blocks}"))
+                 
+                 req_data = GXByteBuffer()
+                 req_data.setUInt8(DataType.STRUCTURE)
+                 req_data.setUInt8(2)
+                 _GXCommon.setData(None, req_data, DataType.UINT32, i)
+                 _GXCommon.setData(None, req_data, DataType.OCTET_STRING, chunk)
+                 
+                 reqs = self.client.method(obj, 2, req_data, DataType.ARRAY)
+                 self._send_dlms_reqs(reqs, f"Block {i}")
+            
+            # 3. Verify
+            self.root.after(0, lambda: self.status_lbl.config(text="Verifying image..."))
+            reqs = obj.imageVerify(self.client)
+            self._send_dlms_reqs(reqs, "Verify")
+            
+            # 4. Activate
+            self.root.after(0, lambda: self.status_lbl.config(text="Activating image..."))
+            reqs = obj.imageActivate(self.client)
+            self._send_dlms_reqs(reqs, "Activate")
+            
+            self.root.after(0, lambda: self.status_lbl.config(text="Transfer Complete!"))
+            self.root.after(0, lambda: messagebox.showinfo("Success", "Image Transfer Completed"))
+
+        except Exception as e:
+            self.root.after(0, lambda: messagebox.showerror("Transfer Error", str(e)))
+            self.root.after(0, lambda: self.status_lbl.config(text="Error"))
+        finally:
+             try:
+                self.root.after(0, lambda: self.start_btn.state(["!disabled"]))
+             except: pass
+
+    def _send_dlms_reqs(self, reqs, desc):
+        from gurux_dlms.GXReplyData import GXReplyData
+        if isinstance(reqs, (bytes, bytearray)):
+            reqs = [reqs]
+        
+        reply = GXReplyData()
+        for req in reqs:
+            reply.clear()
+            self.reader.readDLMSPacket(req, reply)
+            if reply.error:
+                raise Exception(f"DLMS Error {reply.error} in {desc}")
 
     def _obis_name(self, obj, ln, tname):
         try:
@@ -1269,8 +1498,17 @@ class DLMSGUI:
         if t in (int(DataType.INT8), int(DataType.INT16), int(DataType.INT32), int(DataType.INT64),
                  int(DataType.UINT8), int(DataType.UINT16), int(DataType.UINT32), int(DataType.UINT64),
                  int(DataType.ENUM), int(DataType.BCD)):
-            # Try integer
+            # Try integer, handle hex
+            if isinstance(s, str):
+                s = s.strip()
+                if s.lower().startswith("0x"):
+                    return int(s, 16)
             return int(s)
+        if t in (int(DataType.DATETIME), int(DataType.DATE), int(DataType.TIME)):
+            kind = "datetime"
+            if t == int(DataType.DATE): kind = "date"
+            if t == int(DataType.TIME): kind = "time"
+            return self._to_gx_datetime(s, kind)
         if t == int(DataType.BOOLEAN):
             ls = s.lower()
             if ls in ("true","1","yes","on"):
@@ -1357,39 +1595,68 @@ class DLMSGUI:
                 return
             idx = int(self.methods_tree.item(sel[0], "values")[0])
             right = str(self.methods_tree.item(sel[0], "values")[2])
+            
+            # Detailed access check
             if right != "Access":
-                messagebox.showerror("Error", f"Access denied: Method {idx}")
+                # Check raw access
+                try:
+                    raw_access = obj.getMethodAccess3(idx)
+                except Exception:
+                    raw_access = "Unknown"
+                messagebox.showerror("Error", f"Access denied: Method {idx}\nRights: {right} (Raw: {raw_access})")
                 return
+
             type_name = self.method_type_var.get().strip()
             if not type_name or type_name == "NONE":
                 dt = DataType.INT8
                 val = 0
             else:
                 dt = getattr(DataType, type_name)
-                val = self._parse_value(self.method_value.get().strip(), dt)
-            data = self.client.method(obj, idx, val, dt)
-            self.reader.readDLMSPacket(data)
-            self.obis_console.insert("end", f"Method {ln} [{idx}] with {type_name}={val}\n")
-            self.obis_console.see("end")
+                try:
+                    val = self._parse_value(self.method_value.get().strip(), dt)
+                except ValueError as ve:
+                    messagebox.showerror("Error", f"Invalid parameter format for {type_name}:\n{ve}")
+                    return
+            
+            try:
+                data = self.client.method(obj, idx, val, dt)
+                reply = self.reader.readDLMSPacket(data)
+                self.terminal.insert("end", f"Method {ln} [{idx}] executed.\nReply: {reply}\n")
+                self.terminal.see("end")
+                messagebox.showinfo("Success", f"Method executed successfully.\nReply: {reply}")
+            except Exception as e:
+                messagebox.showerror("Method Error", f"Device returned error:\n{str(e)}\n\nCheck parameters and device state.")
         except ValueError as ve:
             messagebox.showerror("Error", f"Type error: {ve}")
         except Exception as e:
             messagebox.showerror("Error", str(e))
-    def run_selected_tests(self):
+    def _run_pytest(self, nodes):
         try:
-            sel = list(self.tests_list.curselection())
-            if not sel:
-                messagebox.showinfo("Info", "Select tests")
-                return
-            nodes = [self.tests_list.get(i) for i in sel]
             cmd = [sys.executable, "-m", "pytest", "-v", "-s"] + nodes
+            # Run in a thread or just blocking? Blocking is fine for now but UI freezes.
+            # User didn't ask for async, but it's better. For now keep it simple.
             res = subprocess.run(cmd, capture_output=True, text=True)
             self.bug_text.delete("1.0","end")
             self.bug_text.insert("end", res.stdout or res.stderr)
-            self.console.insert("end", res.stdout or res.stderr)
-            self.console.see("end")
+            self.terminal.insert("end", res.stdout or res.stderr)
+            self.terminal.see("end")
         except Exception as e:
             messagebox.showerror("Error", str(e))
+
+    def run_selected_tests(self):
+        sel = list(self.tests_list.curselection())
+        if not sel:
+            messagebox.showinfo("Info", "Select tests")
+            return
+        nodes = [self.tests_list.get(i) for i in sel]
+        self._run_pytest(nodes)
+
+    def run_all_tests(self):
+        if self.tests_list.size() == 0:
+            messagebox.showinfo("Info", "No tests collected")
+            return
+        nodes = [self.tests_list.get(i) for i in range(self.tests_list.size())]
+        self._run_pytest(nodes)
 
     def save_assoc_view(self):
         try:
@@ -1591,6 +1858,90 @@ class DLMSGUI:
         except Exception:
             pass
         return "", ""
+
+    def _build_raw_tab(self, parent):
+        pane = ttk.PanedWindow(parent, orient="vertical")
+        pane.pack(fill="both", expand=True)
+        
+        # TX Section
+        tx_frame = ttk.LabelFrame(pane, text="TX Frame (Hex)")
+        pane.add(tx_frame, weight=1)
+        
+        tx_scroll_frame = ttk.Frame(tx_frame)
+        tx_scroll_frame.pack(fill="both", expand=True)
+        
+        self.tx_text = tk.Text(tx_scroll_frame, height=5, font=("Consolas", 10))
+        tx_scroll = ttk.Scrollbar(tx_scroll_frame, orient="vertical", command=self.tx_text.yview)
+        self.tx_text.configure(yscrollcommand=tx_scroll.set)
+        
+        self.tx_text.pack(side="left", fill="both", expand=True)
+        tx_scroll.pack(side="right", fill="y")
+        
+        send_btn = ttk.Button(tx_frame, text="Send Frame", command=self.send_raw_frame)
+        send_btn.pack(anchor="e", padx=5, pady=5)
+        
+        # RX Section
+        rx_frame = ttk.LabelFrame(pane, text="RX Frame (Hex)")
+        pane.add(rx_frame, weight=1)
+        
+        rx_scroll_frame = ttk.Frame(rx_frame)
+        rx_scroll_frame.pack(fill="both", expand=True)
+        
+        self.rx_text = tk.Text(rx_scroll_frame, height=5, font=("Consolas", 10))
+        self.rx_text.configure(state="disabled")
+        
+        rx_scroll = ttk.Scrollbar(rx_scroll_frame, orient="vertical", command=self.rx_text.yview)
+        self.rx_text.configure(yscrollcommand=rx_scroll.set)
+        
+        self.rx_text.pack(side="left", fill="both", expand=True)
+        rx_scroll.pack(side="right", fill="y")
+
+    def send_raw_frame(self):
+        if not self.media or not self.media.isOpen():
+            messagebox.showerror("Error", "Not connected")
+            return
+        
+        content = self.tx_text.get("1.0", "end").strip()
+        if not content:
+            return
+            
+        try:
+            # Clean hex string
+            clean_hex = "".join(content.split())
+            data = GXByteBuffer.hexToBytes(clean_hex)
+            
+            p = ReceiveParameters()
+            p.waitTime = 5000
+            
+            # Default to HDLC EOP 0x7E unless Wrapper
+            if self.client and self.client.interfaceType == InterfaceType.WRAPPER:
+                 p.eop = None
+                 p.count = 8 
+            else:
+                 p.eop = 0x7E
+                 
+            with self.media.getSynchronous():
+                self.media.send(data)
+                
+                self.rx_text.configure(state="normal")
+                self.rx_text.delete("1.0", "end")
+                self.rx_text.insert("end", "Sending...\n")
+                self.rx_text.update()
+                
+                if self.media.receive(p):
+                    self.rx_text.delete("1.0", "end")
+                    self.rx_text.insert("end", GXByteBuffer.hex(p.reply))
+                else:
+                    self.rx_text.delete("1.0", "end")
+                    self.rx_text.insert("end", "Timeout: No response received.")
+                
+                self.rx_text.configure(state="disabled")
+                
+        except Exception as e:
+            self.rx_text.configure(state="normal")
+            self.rx_text.delete("1.0", "end")
+            self.rx_text.insert("end", f"Error: {str(e)}")
+            self.rx_text.configure(state="disabled")
 
 def main():
     root = tk.Tk()

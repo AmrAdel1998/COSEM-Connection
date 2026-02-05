@@ -88,7 +88,7 @@ from gurux_dlms.objects import *
 
 class GXDLMSReader:
     # pylint: disable=too-many-public-methods, too-many-instance-attributes
-    def __init__(self, client, media, trace, invocationCounter):
+    def __init__(self, client, media, trace, invocationCounter, trace_callback=None):
         # pylint: disable=too-many-arguments
         self.replyBuff = bytearray(8 + 1024)
         self.waitTime = 5000
@@ -96,6 +96,7 @@ class GXDLMSReader:
         self.trace = trace
         self.media = media
         self.invocationCounter = invocationCounter
+        self.trace_callback = trace_callback
         self.client = client
         #self.client.serverAddress = 549   # server HDLC address, from manual trace
         if self.trace > TraceLevel.WARNING:
@@ -157,6 +158,8 @@ class GXDLMSReader:
     def writeTrace(self, line, level):
         if self.trace >= level:
             print(line)
+            if self.trace_callback:
+                self.trace_callback(line)
         self.logFile.write(line + "\n")
 
     def readDLMSPacket(self, data, reply=None):
@@ -210,7 +213,7 @@ class GXDLMSReader:
                         if not notify.isMoreData():
                             t = GXDLMSTranslator()
                             xml = t.dataToXml(notify.data)
-                            print(xml)
+                            self.writeTrace(xml, TraceLevel.VERBOSE)
                             notify.clear()
                         continue
                     if not p.eop:
@@ -221,7 +224,7 @@ class GXDLMSReader:
                             raise TimeoutException(
                                 "Failed to receive reply from the device in given time."
                             )
-                        print("Data send failed.  Try to resend " + str(pos) + "/3")
+                        self.writeTrace("Data send failed.  Try to resend " + str(pos) + "/3", TraceLevel.INFO)
                         self.media.send(data, None)
                     rd.set(p.reply)
                     p.reply = None
