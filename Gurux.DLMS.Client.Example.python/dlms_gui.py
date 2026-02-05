@@ -92,10 +92,11 @@ class DLMSGUI:
         ttk.Label(top, text="COM Port").grid(row=0, column=0, sticky="w")
         self.port_var = tk.StringVar(value="COM6")
         ports = sorted([p.device for p in serial.tools.list_ports.comports()])
-        port_cb = ttk.Combobox(top, textvariable=self.port_var, values=ports, width=12)
-        port_cb.grid(row=0, column=1, sticky="w")
+        self.port_cb = ttk.Combobox(top, textvariable=self.port_var, values=ports, width=12)
+        self.port_cb.grid(row=0, column=1, sticky="w")
         if ports and "COM6" not in ports:
-             port_cb.current(0)
+             self.port_cb.current(0)
+        ttk.Button(top, text="Refresh Ports", command=self.refresh_ports).grid(row=0, column=12, sticky="w")
         ttk.Label(top, text="Client").grid(row=0, column=2, sticky="w")
         self.client_var = tk.IntVar(value=1)
         ttk.Entry(top, textvariable=self.client_var, width=6).grid(row=0, column=3, sticky="w")
@@ -1094,6 +1095,22 @@ class DLMSGUI:
         if ls in ("false","0","no","off"):
             return False
         return s
+    def refresh_ports(self):
+        try:
+            ports = sorted([p.device for p in serial.tools.list_ports.comports()])
+        except Exception:
+            ports = []
+        self.port_cb["values"] = ports
+        cur = self.port_var.get()
+        if cur in ports:
+            self.port_cb.set(cur)
+        elif ports:
+            target = "COM6" if "COM6" in ports else ports[0]
+            self.port_var.set(target)
+            self.port_cb.set(target)
+        else:
+            self.port_var.set("")
+            self.port_cb.set("")
     def open_advanced_editor(self):
         try:
             ln = self.sel_ln.get()
