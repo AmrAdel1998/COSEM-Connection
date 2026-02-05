@@ -119,7 +119,7 @@ class DLMSGUI:
         self.bk_var = tk.StringVar(value="7ADF639CA79632FCA3D7810BE6416ABE")
         ttk.Entry(top, textvariable=self.bk_var, width=40).grid(row=1, column=4, columnspan=3, sticky="w")
         ttk.Label(top, text="AuthKey").grid(row=1, column=7, sticky="w")
-        self.ak_var = tk.StringVar(value="245D0F1DF31C4380135AC91D4A22023D")
+        self.ak_var = tk.StringVar(value="7ADF639CA79632FCA3D7810BE6416ABE")
         ttk.Entry(top, textvariable=self.ak_var, width=40).grid(row=1, column=8, columnspan=3, sticky="w")
         ttk.Label(top, text="Standard").grid(row=2, column=0, sticky="w")
         self.std_var = tk.StringVar(value="ITALY")
