@@ -1,4 +1,16 @@
+# Core Gurux DLMS Libraries
 gurux-common==1.0.13
 gurux-dlms==1.0.194
-gurux-net==1.0.22
+gurux-net==1.0.19
 gurux-serial==1.0.21
+
+# Connection & Media
+pyserial==3.5
+
+# GUI & Analysis Tools
+opencv-python==4.13.0.92
+numpy
+pandas==2.3.3
+
+# Testing
+pytest==9.0.1
