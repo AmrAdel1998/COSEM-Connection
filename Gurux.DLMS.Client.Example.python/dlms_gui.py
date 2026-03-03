@@ -1939,19 +1939,31 @@ class DLMSGUI:
                  
             with self.media.getSynchronous():
                 self.media.send(data)
-                
+
                 self.rx_text.configure(state="normal")
                 self.rx_text.delete("1.0", "end")
                 self.rx_text.insert("end", "Sending...\n")
                 self.rx_text.update()
-                
-                if self.media.receive(p):
+
+                full_reply = bytearray()
+
+                while True:
+                    if not self.media.receive(p):
+                        break
+
+                    full_reply.extend(p.reply)
+
+                    # لو آخر بايت هو 0x7E وبدأنا بالفعل في فريم
+                    if len(full_reply) > 1 and full_reply[-1] == 0x7E:
+                        break
+
+                if full_reply:
                     self.rx_text.delete("1.0", "end")
-                    self.rx_text.insert("end", GXByteBuffer.hex(p.reply))
+                    self.rx_text.insert("end", GXByteBuffer.hex(full_reply))
                 else:
                     self.rx_text.delete("1.0", "end")
                     self.rx_text.insert("end", "Timeout: No response received.")
-                
+
                 self.rx_text.configure(state="disabled")
                 
         except Exception as e:
