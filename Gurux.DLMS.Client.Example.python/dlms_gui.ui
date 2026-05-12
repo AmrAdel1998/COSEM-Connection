@@ -589,6 +589,250 @@
              </item>
             </layout>
            </widget>
+           <widget class="QWidget" name="tabReplayAttack">
+            <attribute name="title">
+             <string>Replay Attack</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="replayVLayout">
+             <item>
+              <widget class="QScrollArea" name="scrollAreaReplay">
+               <property name="widgetResizable">
+                <bool>true</bool>
+               </property>
+               <widget class="QWidget" name="scrollAreaWidgetContentsReplay">
+                <property name="geometry">
+                 <rect>
+                  <x>0</x>
+                  <y>0</y>
+                  <width>1200</width>
+                  <height>1000</height>
+                 </rect>
+                </property>
+                <layout class="QVBoxLayout" name="scrollReplayVLayout">
+                 <item>
+                  <widget class="QGroupBox" name="grpRecordControls">
+                   <property name="title">
+                    <string>Recording Controls</string>
+                   </property>
+                   <layout class="QHBoxLayout">
+                    <item>
+                     <widget class="QPushButton" name="btnStartRecording">
+                      <property name="text">
+                       <string>Start Recording</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QPushButton" name="btnStopRecording">
+                      <property name="text">
+                       <string>Stop Recording</string>
+                      </property>
+                      <property name="enabled">
+                       <bool>false</bool>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QPushButton" name="btnSaveRecording">
+                      <property name="text">
+                       <string>Save Recording...</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QPushButton" name="btnLoadRecording">
+                      <property name="text">
+                       <string>Load Recording...</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QLabel" name="lblRecordingStatus">
+                      <property name="text">
+                       <string>Status: Not Recording</string>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QGroupBox" name="grpRecordedFrames">
+                   <property name="title">
+                    <string>Recorded Frames</string>
+                   </property>
+                   <layout class="QVBoxLayout">
+                    <item>
+                     <widget class="QTreeWidget" name="recordedFramesTree">
+                      <property name="alternatingRowColors">
+                       <bool>true</bool>
+                      </property>
+                      <property name="columnCount">
+                       <number>4</number>
+                      </property>
+                      <column>
+                       <property name="text">
+                        <string>#</string>
+                       </property>
+                      </column>
+                      <column>
+                       <property name="text">
+                        <string>Direction</string>
+                       </property>
+                      </column>
+                      <column>
+                       <property name="text">
+                        <string>Timestamp</string>
+                       </property>
+                      </column>
+                      <column>
+                       <property name="text">
+                        <string>Data (Hex)</string>
+                       </property>
+                      </column>
+                     </widget>
+                    </item>
+                    <item>
+                     <layout class="QHBoxLayout">
+                      <item>
+                       <widget class="QPushButton" name="btnEditSelectedFrame">
+                        <property name="text">
+                         <string>Edit Selected Frame...</string>
+                        </property>
+                       </widget>
+                      </item>
+                      <item>
+                       <widget class="QPushButton" name="btnRemoveSelectedFrame">
+                        <property name="text">
+                         <string>Remove Selected</string>
+                        </property>
+                       </widget>
+                      </item>
+                      <item>
+                       <widget class="QPushButton" name="btnClearFrames">
+                        <property name="text">
+                         <string>Clear All</string>
+                        </property>
+                       </widget>
+                      </item>
+                      <item>
+                       <spacer>
+                        <property name="orientation">
+                         <enum>Qt::Horizontal</enum>
+                        </property>
+                       </spacer>
+                      </item>
+                     </layout>
+                    </item>
+                   </layout>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QGroupBox" name="grpReplayControls">
+                   <property name="title">
+                    <string>Replay Controls</string>
+                   </property>
+                   <layout class="QHBoxLayout">
+                    <item>
+                     <widget class="QLabel" name="lblReplayDelay">
+                      <property name="text">
+                       <string>Delay between frames (ms):</string>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QSpinBox" name="spinReplayDelay">
+                      <property name="minimum">
+                       <number>0</number>
+                      </property>
+                      <property name="maximum">
+                       <number>10000</number>
+                      </property>
+                      <property name="value">
+                       <number>500</number>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <widget class="QCheckBox" name="chkOnlyTX">
+                      <property name="text">
+                       <string>Only replay TX frames</string>
+                      </property>
+                      <property name="checked">
+                       <bool>true</bool>
+                      </property>
+                     </widget>
+                    </item>
+                    <item>
+                     <spacer>
+                      <property name="orientation">
+                       <enum>Qt::Horizontal</enum>
+                      </property>
+                     </spacer>
+                    </item>
+                    <item>
+                     <widget class="QPushButton" name="btnStartReplayFull">
+                      <property name="text">
+                       <string>Start Full Replay Attack</string>
+                      </property>
+                      <property name="styleSheet">
+                       <string>background-color: #FF5722; color: white; font-weight: bold;</string>
+                      </property>
+                     </widget>
+                    </item>
+                   </layout>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QGroupBox" name="grpReplayResult">
+                   <property name="title">
+                    <string>Results &amp; Meter Behavior</string>
+                   </property>
+                   <layout class="QVBoxLayout">
+                    <item>
+                     <widget class="QTreeWidget" name="replayResultTree">
+                      <property name="alternatingRowColors">
+                       <bool>true</bool>
+                      </property>
+                      <property name="columnCount">
+                       <number>5</number>
+                      </property>
+                      <column>
+                       <property name="text">
+                        <string>#</string>
+                       </property>
+                      </column>
+                      <column>
+                       <property name="text">
+                        <string>Original Frame</string>
+                       </property>
+                      </column>
+                      <column>
+                       <property name="text">
+                        <string>Sent</string>
+                       </property>
+                      </column>
+                      <column>
+                       <property name="text">
+                        <string>Response</string>
+                       </property>
+                      </column>
+                      <column>
+                       <property name="text">
+                        <string>Status</string>
+                       </property>
+                      </column>
+                     </widget>
+                    </item>
+                   </layout>
+                  </widget>
+                 </item>
+                </layout>
+               </widget>
+              </widget>
+             </item>
+            </layout>
+           </widget>
 		   <widget class="QWidget" name="tabTasks">
             <attribute name="title">
              <string>Tasks</string>

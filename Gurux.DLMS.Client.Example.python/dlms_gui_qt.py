@@ -86,6 +86,9 @@ class _PortListener(IGXMediaListener):
             self._buf = self._buf[end + 1:]
             hex_str = GXByteBuffer.hex(frame)
             self._gui.append_terminal(f"RX (listener): {hex_str}")
+            # Record RX frames when recording is active
+            if self._gui._is_recording:
+                self._gui._add_recorded_frame("RX", frame)
             ctrl = self._extract_control_byte(frame)
             if ctrl in self._DM_CONTROL_BYTES:
                 self._gui.on_meter_disconnect_signal.emit()
@@ -172,6 +175,10 @@ class DLMSGUI(QMainWindow):
         self.log_path = "logFile.txt"
         self.test_files = []
 
+        # Replay Attack
+        self._is_recording = False
+        self._recorded_frames = []
+
         # Association view cache
         self.association_cache_file = Path(__file__).parent / "association_cache.json"
         self.cached_objects = []
@@ -249,6 +256,16 @@ class DLMSGUI(QMainWindow):
         self.btnFetchBugs.clicked.connect(self.fetch_bugs)
 
         self.btnClearTerminal.clicked.connect(self.terminal.clear)
+
+        # Replay Attack connections
+        self.btnStartRecording.clicked.connect(self.start_recording)
+        self.btnStopRecording.clicked.connect(self.stop_recording)
+        self.btnSaveRecording.clicked.connect(self.save_recording)
+        self.btnLoadRecording.clicked.connect(self.load_recording)
+        self.btnEditSelectedFrame.clicked.connect(self.edit_selected_frame)
+        self.btnRemoveSelectedFrame.clicked.connect(self.remove_selected_frame)
+        self.btnClearFrames.clicked.connect(self.clear_frames)
+        self.btnStartReplayFull.clicked.connect(self.start_full_replay_attack)
 
         self.on_meter_disconnect_signal.connect(self._on_meter_disconnect)
 
@@ -506,6 +523,27 @@ class DLMSGUI(QMainWindow):
     def _trace(self, text: str):
         self.append_terminal(text)
 
+    def _add_recorded_frame(self, direction, data):
+        import time
+        ts = time.strftime("%H:%M:%S", time.localtime())
+        self._recorded_frames.append({
+            "direction": direction,
+            "timestamp": ts,
+            "data": bytes(data)
+        })
+        item = QTreeWidgetItem([
+            str(len(self._recorded_frames)),
+            direction,
+            ts,
+            GXByteBuffer.hex(data)
+        ])
+        if direction == "TX":
+            item.setBackground(1, Qt.yellow)
+        elif direction == "RX":
+            item.setBackground(1, Qt.cyan)
+        self.recordedFramesTree.addTopLevelItem(item)
+        self._trace(f"Recorded {direction} frame at {ts}")
+
     # ------------------------------------------------------------------
     # Port management
     # ------------------------------------------------------------------
@@ -571,6 +609,18 @@ class DLMSGUI(QMainWindow):
             self.client = client
             self.reader = reader
             self.media = media
+
+            # Wrap media.send to record TX frames when recording is active
+            original_send = media.send
+
+            def wrapped_send(*args, **kwargs):
+                if self._is_recording and len(args) > 0:
+                    data = args[0]
+                    self._add_recorded_frame("TX", data)
+                return original_send(*args, **kwargs)
+
+            media.send = wrapped_send
+
             self.media.open()
             self._port_listener = _PortListener(self)
             self.media.addListener(self._port_listener)
@@ -590,7 +640,10 @@ class DLMSGUI(QMainWindow):
         self.mainStatusBar.showMessage("Connected")
         self.update_last_communication()
         
-        # Save association view to cache after successful connection
+        # Refresh OBIS automatically after connecting
+        self.refresh_obis()
+        
+        # Save association view to cache after successful connection and refresh
         self.save_association_cache()
 
     def _on_connect_error(self, msg: str):
@@ -772,10 +825,13 @@ class DLMSGUI(QMainWindow):
 
     def read_selected_attr(self):
         try:
+            if not self.client or not self.reader:
+                QMessageBox.warning(self, "Error", "Not connected to meter! Connect first or refresh OBIS!")
+                return
             ln = self.editSelOBIS.text()
             obj = self._find_obj(ln)
             if not obj:
-                QMessageBox.warning(self, "Error", "Object not found (connect to meter first)")
+                QMessageBox.warning(self, "Error", "Object not found (connect to meter first or refresh OBIS)")
                 return
             sel = self.attrsTree.selectedItems()
             if not sel:
@@ -792,6 +848,9 @@ class DLMSGUI(QMainWindow):
 
     def write_selected_attr(self):
         try:
+            if not self.client or not self.reader:
+                QMessageBox.warning(self, "Error", "Not connected to meter! Connect first or refresh OBIS!")
+                return
             ln = self.editSelOBIS.text()
             self._trace(f"write_selected_attr: ln={ln}")
             obj = self._find_obj(ln)
@@ -872,6 +931,9 @@ class DLMSGUI(QMainWindow):
 
     def run_selected_method(self):
         try:
+            if not self.client or not self.reader:
+                QMessageBox.warning(self, "Error", "Not connected to meter! Connect first or refresh OBIS!")
+                return
             ln = self.editSelOBIS.text()
             obj = self._find_obj(ln)
             if not obj:
@@ -1318,6 +1380,220 @@ class DLMSGUI(QMainWindow):
                 self.update_last_communication()
         except Exception as e:
             self.rxText.setPlainText(f"Error: {e}")
+
+    # ------------------------------------------------------------------
+    # Replay Attack tab
+    # ------------------------------------------------------------------
+
+    def start_recording(self):
+        if not self.media or not self.media.isOpen():
+            QMessageBox.warning(self, "Error", "Not connected to meter! Connect first to start recording!")
+            return
+        self._is_recording = True
+        self.btnStartRecording.setEnabled(False)
+        self.btnStopRecording.setEnabled(True)
+        self.lblRecordingStatus.setText("Status: Recording...")
+        self.lblRecordingStatus.setStyleSheet("color: red; font-weight: bold;")
+        self._trace("Started recording frames")
+
+    def stop_recording(self):
+        self._is_recording = False
+        self.btnStartRecording.setEnabled(True)
+        self.btnStopRecording.setEnabled(False)
+        self.lblRecordingStatus.setText("Status: Not Recording")
+        self.lblRecordingStatus.setStyleSheet("")
+        self._trace(f"Stopped recording, {len(self._recorded_frames)} frames recorded")
+
+    def save_recording(self):
+        if not self._recorded_frames:
+            QMessageBox.information(self, "Info", "No frames to save!")
+            return
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save Recording", "",
+            "JSON Files (*.json);;All Files (*.*)",
+        )
+        if not path:
+            return
+        try:
+            import json
+            data = []
+            for frame in self._recorded_frames:
+                data.append({
+                    "direction": frame["direction"],
+                    "timestamp": frame["timestamp"],
+                    "data_hex": GXByteBuffer.hex(frame["data"])
+                })
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump(data, f, indent=2)
+            self._trace(f"Recording saved to {path}")
+            QMessageBox.information(self, "Success", f"Recording saved to {path}!")
+        except Exception as e:
+            self._trace(f"Failed to save recording: {e}")
+            import traceback
+            self._trace(traceback.format_exc())
+            QMessageBox.critical(self, "Error", f"Failed to save recording: {e}")
+
+    def load_recording(self):
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Load Recording", "",
+            "JSON Files (*.json);;All Files (*.*)",
+        )
+        if not path:
+            return
+        try:
+            import json
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            self.clear_frames()
+            for entry in data:
+                data_bytes = GXByteBuffer.hexToBytes(entry["data_hex"])
+                self._add_recorded_frame(entry["direction"], data_bytes)
+            self._trace(f"Loaded {len(self._recorded_frames)} frames from {path}")
+            QMessageBox.information(self, "Success", f"Loaded {len(self._recorded_frames)} frames!")
+        except Exception as e:
+            self._trace(f"Failed to load recording: {e}")
+            import traceback
+            self._trace(traceback.format_exc())
+            QMessageBox.critical(self, "Error", f"Failed to load recording: {e}")
+
+    def edit_selected_frame(self):
+        selected = self.recordedFramesTree.selectedItems()
+        if not selected:
+            QMessageBox.information(self, "Info", "Select a frame to edit!")
+            return
+        idx = self.recordedFramesTree.indexOfTopLevelItem(selected[0])
+        frame_entry = self._recorded_frames[idx]
+        current_hex = GXByteBuffer.hex(frame_entry["data"])
+
+        dialog = QDialog(self)
+        dialog.setWindowTitle("Edit Frame")
+        dialog.resize(640, 320)
+        layout = QVBoxLayout(dialog)
+        layout.addWidget(QLabel(f"Editing frame #{idx+1} ({frame_entry['direction']} at {frame_entry['timestamp']}):"))
+        edit_text = QPlainTextEdit()
+        edit_text.setPlainText(current_hex)
+        layout.addWidget(edit_text)
+        bbox = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+        layout.addWidget(bbox)
+
+        def on_ok():
+            try:
+                new_hex = edit_text.toPlainText().strip()
+                new_data = GXByteBuffer.hexToBytes(new_hex)
+                self._recorded_frames[idx]["data"] = new_data
+                selected[0].setText(3, GXByteBuffer.hex(new_data))
+                dialog.accept()
+                self._trace(f"Edited frame #{idx+1}")
+            except Exception as e:
+                QMessageBox.critical(dialog, "Error", f"Invalid hex data: {e}")
+
+        bbox.accepted.connect(on_ok)
+        bbox.rejected.connect(dialog.reject)
+        dialog.exec()
+
+    def remove_selected_frame(self):
+        selected = self.recordedFramesTree.selectedItems()
+        if not selected:
+            QMessageBox.information(self, "Info", "Select a frame to remove!")
+            return
+        idx = self.recordedFramesTree.indexOfTopLevelItem(selected[0])
+        self.recordedFramesTree.takeTopLevelItem(idx)
+        del self._recorded_frames[idx]
+        # Update numbers in tree
+        for i in range(len(self._recorded_frames)):
+            self.recordedFramesTree.topLevelItem(i).setText(0, str(i + 1))
+        self._trace(f"Removed frame #{idx+1}")
+
+    def clear_frames(self):
+        self._recorded_frames = []
+        self.recordedFramesTree.clear()
+        self._trace("Cleared all recorded frames")
+
+    def start_full_replay_attack(self):
+        if not self._recorded_frames:
+            QMessageBox.warning(self, "Error", "No frames to replay! Record or load a recording first!")
+            return
+        tx_frames = [f for f in self._recorded_frames if f["direction"] == "TX"] if self.chkOnlyTX.isChecked() else self._recorded_frames
+        if not tx_frames:
+            QMessageBox.information(self, "Info", "No TX frames to replay!")
+            return
+        if not self.media or not self.media.isOpen():
+            QMessageBox.warning(self, "Error", "Not connected to meter! Connect first!")
+            return
+
+        self.replayResultTree.clear()
+        delay_ms = self.spinReplayDelay.value()
+
+        try:
+            import time
+            for i, frame in enumerate(tx_frames):
+                item = QTreeWidgetItem([
+                    str(i + 1),
+                    GXByteBuffer.hex(frame["data"]),
+                    "",
+                    "",
+                    "Sending...",
+                ])
+                self.replayResultTree.addTopLevelItem(item)
+                QApplication.processEvents()
+
+                try:
+                    p = ReceiveParameters()
+                    p.waitTime = RECEIVE_TIMEOUT_MS
+                    if self.client and self.client.interfaceType == InterfaceType.WRAPPER:
+                        p.eop = None
+                        p.count = 8
+                    else:
+                        p.eop = 0x7E
+
+                    full_reply = bytearray()
+                    with self.media.getSynchronous():
+                        tx_hex = GXByteBuffer.hex(frame["data"])
+                        self.append_terminal(f"TX (replay): {tx_hex}")
+                        self.media.send(frame["data"])
+                        item.setText(2, tx_hex)
+                        QApplication.processEvents()
+                        while True:
+                            if not self.media.receive(p):
+                                break
+                            full_reply.extend(p.reply)
+                            if len(full_reply) > 1 and full_reply[-1] == 0x7E:
+                                break
+
+                    reply_hex = GXByteBuffer.hex(full_reply) if full_reply else "Timeout: No response"
+                    if full_reply:
+                        self.append_terminal(f"RX (replay): {reply_hex}")
+                    if not full_reply:
+                        status = "Timeout"
+                        item.setBackground(4, Qt.yellow)
+                    else:
+                        status = "Response Received"
+                        item.setBackground(4, Qt.green)
+                    item.setText(3, reply_hex)
+                    item.setText(4, status)
+                    self._trace(f"Replay frame {i+1}/{len(tx_frames)}: sent, got {status}")
+                    self.update_last_communication()
+
+                    if i < len(tx_frames) - 1:
+                        time.sleep(delay_ms / 1000.0)
+                    QApplication.processEvents()
+
+                except Exception as e:
+                    error_msg = f"Error: {str(e)}"
+                    item.setText(3, error_msg)
+                    item.setText(4, "Error")
+                    item.setBackground(4, Qt.red)
+                    self._trace(f"Replay frame {i+1} failed: {e}")
+                    import traceback
+                    self._trace(traceback.format_exc())
+
+            QMessageBox.information(self, "Full Replay Attack Complete", "Replay attack completed! Check results tree for details!")
+
+        except Exception as e:
+            QMessageBox.critical(self, "Replay Attack Error", f"{str(e)}\nCheck terminal for more details!")
+            self._trace(f"Replay attack error: {e}")
+            import traceback
+            self._trace(traceback.format_exc())
 
     # ------------------------------------------------------------------
     # Custom PDU tab

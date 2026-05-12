@@ -1,0 +1,37 @@
+[
+  {
+    "direction": "TX",
+    "timestamp": "12:43:37",
+    "data_hex": "7E A0 2E 02 25 03 FA 29 07 E6 E6 00 DB 00 1E 30 00 00 00 1D 67 25 AD 4E 8C BB A5 5C E5 33 27 C1 3E AD 51 2D A8 29 0D B2 EB 85 E3 FB 74 4C D1 7E"
+  },
+  {
+    "direction": "TX",
+    "timestamp": "12:43:37",
+    "data_hex": "7E A0 2E 02 25 03 1C 11 85 E6 E6 00 DB 00 1E 30 00 00 00 1E 37 BA 80 FF 3E 74 D2 BD D6 69 5A CA 97 F3 CC 32 93 C3 8E FF B0 68 1A 8D 02 9B 21 7E"
+  },
+  {
+    "direction": "TX",
+    "timestamp": "12:43:43",
+    "data_hex": "7E A0 2E 02 25 03 3E 01 87 E6 E6 00 DB 00 1E 30 00 00 00 1F 03 51 A0 02 0B FE F1 D9 78 1C 28 35 D3 E8 09 B7 0A C2 7A 3C FE C7 D7 C1 87 99 48 7E"
+  },
+  {
+    "direction": "TX",
+    "timestamp": "12:43:43",
+    "data_hex": "7E A0 2E 02 25 03 50 79 0D E6 E6 00 DB 00 1E 30 00 00 00 20 1D 1F 2D AD C1 35 DD 9C 5E 13 E5 9B 32 9C 15 A5 5B C6 42 75 37 06 CD DE BE 96 60 7E"
+  },
+  {
+    "direction": "TX",
+    "timestamp": "12:43:49",
+    "data_hex": "7E A0 2E 02 25 03 72 69 0F E6 E6 00 DB 00 1E 30 00 00 00 21 2A 2D 73 44 2D 65 17 3D 68 E6 AD EE 33 23 59 9C 36 97 EA 0C 73 36 99 A0 3F D5 64 7E"
+  },
+  {
+    "direction": "TX",
+    "timestamp": "12:43:50",
+    "data_hex": "7E A0 2E 02 25 03 94 51 8D E6 E6 00 DB 00 1E 30 00 00 00 22 84 81 74 E1 AC 86 95 4A 4C AA BD 5A DF F8 8A 3A E9 2E 92 B1 63 E7 4B D0 7C 17 FC 7E"
+  },
+  {
+    "direction": "TX",
+    "timestamp": "12:43:55",
+    "data_hex": "7E A0 30 02 25 03 B6 B9 5A E6 E6 00 DB 00 20 30 00 00 00 23 B8 1A B0 33 2C 0D C1 15 E0 8C 1B 0D FE 4B 9C BF A3 2F 73 D7 54 D3 E9 8B EF 78 29 26 31 7E"
+  }
+]
