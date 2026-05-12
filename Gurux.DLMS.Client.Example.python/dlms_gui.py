@@ -1,3 +1,5 @@
+RECEIVE_TIMEOUT_MS = 600000
+
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 import threading
@@ -8,7 +10,7 @@ import io
 import subprocess
 import tkinter.font as tkfont
 from gurux_common.enums import TraceLevel
-from gurux_common import ReceiveParameters
+from gurux_common import ReceiveParameters, IGXMediaListener
 from gurux_common.io import Parity, StopBits, BaudRate
 from gurux_dlms.enums import InterfaceType, Authentication, Security, Standard, DataType, ObjectType
 from gurux_dlms import GXDLMSClient
@@ -26,6 +28,79 @@ try:
 except Exception:
     requests = None
 
+class _PortListener(IGXMediaListener):
+    """Passive listener that logs every byte arriving on the COM port."""
+
+    def __init__(self, gui):
+        self._gui = gui
+        self._buf = bytearray()
+
+    # HDLC control bytes that signal Disconnected Mode
+    _DM_CONTROL_BYTES = {0x1F, 0x17}
+
+    # --- IGXMediaListener interface ---
+    def onReceived(self, sender, e):
+        if e.data is None:
+            return
+        raw = bytearray(e.data) if not isinstance(e.data, bytearray) else e.data
+        self._buf.extend(raw)
+        # Flush complete HDLC frames (0x7E ... 0x7E) to the terminal
+        while len(self._buf) >= 2:
+            start = self._buf.find(0x7E)
+            if start == -1:
+                self._buf.clear()
+                break
+            if start > 0:
+                self._buf = self._buf[start:]
+            end = self._buf.find(0x7E, 1)
+            if end == -1:
+                break  # frame not yet complete
+            frame = bytes(self._buf[:end + 1])
+            self._buf = self._buf[end + 1:]
+            hex_str = GXByteBuffer.hex(frame)
+            self._gui.root.after(0, self._gui._trace, f"RX (listener): {hex_str}")
+            # Detect Disconnected Mode frame and auto-disconnect
+            ctrl = self._extract_control_byte(frame)
+            if ctrl in self._DM_CONTROL_BYTES:
+                self._gui.root.after(0, self._gui._on_meter_disconnect)
+
+    @staticmethod
+    def _extract_control_byte(frame):
+        """Extract the HDLC control byte from a complete frame.
+
+        Frame layout: 7E [format+len 2B] [dst addr 1-4B] [src addr 1-4B] [ctrl] ...
+        Address bytes have bit 0 = 0 except the last byte which has bit 0 = 1.
+        """
+        if len(frame) < 6:
+            return None
+        i = 3  # skip 7E, format high, format low
+        # skip destination address bytes (bit 0 == 0 means more address bytes)
+        while i < len(frame) - 1:
+            if frame[i] & 0x01:
+                i += 1
+                break
+            i += 1
+        # skip source address bytes
+        while i < len(frame) - 1:
+            if frame[i] & 0x01:
+                i += 1
+                break
+            i += 1
+        return frame[i] if i < len(frame) else None
+
+    def onError(self, sender, ex):
+        pass
+
+    def onMediaStateChange(self, sender, e):
+        pass
+
+    def onTrace(self, sender, e):
+        pass
+
+    def onPropertyChanged(self, sender, e):
+        pass
+
+
 class DLMSGUI:
     def __init__(self, root):
         self.root = root
@@ -33,6 +108,7 @@ class DLMSGUI:
         self.client = None
         self.reader = None
         self.media = None
+        self._port_listener = None
         self.log_path = "logFile.txt"
         self.stop_tail = threading.Event()
         self.test_files = []
@@ -76,15 +152,18 @@ class DLMSGUI:
         cfg_tab = ttk.Frame(eng_nb)
         obis_tab = ttk.Frame(eng_nb)
         raw_tab = ttk.Frame(eng_nb)
+        pdu_tab = ttk.Frame(eng_nb)
         tests_tab = ttk.Frame(eng_nb)
         bugs_tab = ttk.Frame(eng_nb)
         eng_nb.add(cfg_tab, text="Configuration")
         eng_nb.add(obis_tab, text="OBIS")
         eng_nb.add(raw_tab, text="Manual HDLC")
+        eng_nb.add(pdu_tab, text="Custom PDU")
         eng_nb.add(tests_tab, text="Tests")
         eng_nb.add(bugs_tab, text="Bugs")
-        
+
         self._build_raw_tab(raw_tab)
+        self._build_custom_pdu_tab(pdu_tab)
         obis_canvas, obis_inner = self._make_scrollable_tab(obis_tab)
         self._add_watermark(obis_canvas)
         top = ttk.Frame(cfg_tab)
@@ -337,6 +416,8 @@ class DLMSGUI:
             self.reader = reader
             self.media = media
             self.media.open()
+            self._port_listener = _PortListener(self)
+            self.media.addListener(self._port_listener)
             self.reader.initializeConnection()
             self.reader.getAssociationView()
             try:
@@ -346,15 +427,26 @@ class DLMSGUI:
             except Exception:
                 pass
             self._trace("Connected")
-            self.refresh_obis()
+            #self.refresh_obis()
             self.stop_tail.clear()
             threading.Thread(target=self._tail_log, daemon=True).start()
         except Exception as e:
             messagebox.showerror("Error", str(e))
 
+    def _on_meter_disconnect(self):
+        """Called when the listener detects a DM frame from the meter."""
+        self._trace("Meter sent Disconnected Mode (DM) frame — ending session.")
+        self.disconnect()
+
     def disconnect(self):
         try:
             self.stop_tail.set()
+            if self._port_listener and self.media:
+                try:
+                    self.media.removeListener(self._port_listener)
+                except Exception:
+                    pass
+            self._port_listener = None
             if self.reader:
                 self.reader.close()
             if self.media and self.media.isOpen():
@@ -372,7 +464,17 @@ class DLMSGUI:
             self.terminal.delete("1.0","end")
 
     def refresh_obis(self):
+        if not self.reader:
+            messagebox.showerror("Error", "Not connected")
+            return
         try:
+            self.reader.getAssociationView()
+            conv = GXDLMSConverter(self.client.standard)
+            for it in self.client.objects:
+                try:
+                    conv.updateOBISCodeInformation(it)
+                except Exception:
+                    pass
             self.tree.delete(*self.tree.get_children())
             parents = {}
             for obj in self.client.objects:
@@ -1928,7 +2030,7 @@ class DLMSGUI:
             data = GXByteBuffer.hexToBytes(clean_hex)
             
             p = ReceiveParameters()
-            p.waitTime = 5000
+            p.waitTime = RECEIVE_TIMEOUT_MS
             
             # Default to HDLC EOP 0x7E unless Wrapper
             if self.client and self.client.interfaceType == InterfaceType.WRAPPER:
@@ -1971,6 +2073,328 @@ class DLMSGUI:
             self.rx_text.delete("1.0", "end")
             self.rx_text.insert("end", f"Error: {str(e)}")
             self.rx_text.configure(state="disabled")
+
+    # ------------------------------------------------------------------
+    # Custom PDU Tab
+    # ------------------------------------------------------------------
+
+    def _build_custom_pdu_tab(self, parent):
+        pane = ttk.PanedWindow(parent, orient="vertical")
+        pane.pack(fill="both", expand=True)
+
+        # ---- PDU input ----
+        self.pdu_input_frame = ttk.LabelFrame(pane, text="PDU Input (Hex)")
+        pane.add(self.pdu_input_frame, weight=1)
+
+        mode_bar = ttk.Frame(self.pdu_input_frame)
+        mode_bar.pack(fill="x")
+        ttk.Label(mode_bar, text="Input mode:").pack(side="left", padx=4)
+        self.pdu_mode_var = tk.StringVar(value="hex")
+        ttk.Radiobutton(mode_bar, text="Hex", variable=self.pdu_mode_var,
+                        value="hex", command=self._on_pdu_mode_change).pack(side="left")
+        ttk.Radiobutton(mode_bar, text="XML", variable=self.pdu_mode_var,
+                        value="xml", command=self._on_pdu_mode_change).pack(side="left")
+
+        self.pdu_input = tk.Text(self.pdu_input_frame, height=4, font=("Consolas", 10))
+        pdu_sx = ttk.Scrollbar(self.pdu_input_frame, orient="vertical", command=self.pdu_input.yview)
+        self.pdu_input.configure(yscrollcommand=pdu_sx.set)
+        self.pdu_input.pack(side="left", fill="both", expand=True)
+        pdu_sx.pack(side="right", fill="y")
+
+        # ---- Options ----
+        opts_frame = ttk.LabelFrame(pane, text="Wrapping Options")
+        pane.add(opts_frame, weight=0)
+
+        self.pdu_cipher_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(opts_frame, text="Apply Ciphering", variable=self.pdu_cipher_var).grid(
+            row=0, column=0, sticky="w", padx=4, pady=2
+        )
+
+        ttk.Label(opts_frame, text="Cipher Tag").grid(row=0, column=1, sticky="w", padx=4)
+        self.pdu_tag_var = tk.StringVar(value="AUTO (from PDU byte 0)")
+        tag_choices = [
+            "AUTO (from PDU byte 0)",
+            "0xC8  GLO_GET_REQUEST",
+            "0xC9  GLO_SET_REQUEST",
+            "0xCB  GLO_METHOD_REQUEST",
+            "0xDB  GENERAL_GLO_CIPHERING",
+        ]
+        self.pdu_tag_cb = ttk.Combobox(
+            opts_frame, textvariable=self.pdu_tag_var, values=tag_choices, width=28, state="readonly"
+        )
+        self.pdu_tag_cb.grid(row=0, column=2, sticky="w", padx=4)
+
+        self.pdu_llc_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(opts_frame, text="Add LLC Bytes", variable=self.pdu_llc_var).grid(
+            row=0, column=3, sticky="w", padx=4
+        )
+
+        ttk.Label(opts_frame, text="Invocation Counter").grid(row=0, column=4, sticky="w", padx=4)
+        self.pdu_ic_var = tk.StringVar(value="AUTO")
+        ttk.Entry(opts_frame, textvariable=self.pdu_ic_var, width=12).grid(
+            row=0, column=5, sticky="w", padx=4
+        )
+
+        ttk.Label(opts_frame, text="Frame Type (hex)").grid(row=1, column=0, sticky="w", padx=4)
+        self.pdu_frame_type_var = tk.StringVar(value="0xDC")
+        ttk.Entry(opts_frame, textvariable=self.pdu_frame_type_var, width=10).grid(
+            row=1, column=1, sticky="w", padx=4
+        )
+        ttk.Label(opts_frame, text="(AUTO = use getNextSend)").grid(row=1, column=2, sticky="w", padx=2)
+
+        btn_frame = ttk.Frame(opts_frame)
+        btn_frame.grid(row=2, column=0, columnspan=6, sticky="w", pady=4)
+        ttk.Button(btn_frame, text="Build Frame", command=self._build_custom_frame_preview).pack(
+            side="left", padx=4
+        )
+        self.pdu_send_btn = ttk.Button(btn_frame, text="Send Frame", command=self._send_custom_pdu_frame)
+        self.pdu_send_btn.pack(side="left", padx=4)
+
+        # ---- Built frame preview ----
+        built_frame = ttk.LabelFrame(pane, text="Built Frame (Hex)")
+        pane.add(built_frame, weight=1)
+
+        self.pdu_built_text = tk.Text(built_frame, height=4, font=("Consolas", 10))
+        built_sx = ttk.Scrollbar(built_frame, orient="vertical", command=self.pdu_built_text.yview)
+        self.pdu_built_text.configure(yscrollcommand=built_sx.set)
+        self.pdu_built_text.configure(state="disabled")
+        self.pdu_built_text.pack(side="left", fill="both", expand=True)
+        built_sx.pack(side="right", fill="y")
+
+        # ---- RX response ----
+        rx_frame = ttk.LabelFrame(pane, text="RX Response (Hex)")
+        pane.add(rx_frame, weight=1)
+
+        self.pdu_rx_text = tk.Text(rx_frame, height=4, font=("Consolas", 10))
+        rx_sx = ttk.Scrollbar(rx_frame, orient="vertical", command=self.pdu_rx_text.yview)
+        self.pdu_rx_text.configure(yscrollcommand=rx_sx.set)
+        self.pdu_rx_text.configure(state="disabled")
+        self.pdu_rx_text.pack(side="left", fill="both", expand=True)
+        rx_sx.pack(side="right", fill="y")
+
+    def _on_pdu_mode_change(self):
+        from gurux_dlms.GXDLMSTranslator import GXDLMSTranslator
+        content = self.pdu_input.get("1.0", "end").strip()
+        if not content:
+            self.pdu_input_frame.configure(text="PDU Input (Hex)" if self.pdu_mode_var.get() == "hex" else "PDU Input (XML)")
+            return
+        t = GXDLMSTranslator()
+        try:
+            if self.pdu_mode_var.get() == "xml":
+                # Hex → XML
+                pdu_bytes = bytearray(GXByteBuffer.hexToBytes("".join(content.split())))
+                result = t.pduToXml(pdu_bytes)
+                if result.strip().startswith("<Data="):
+                    messagebox.showwarning("Translation Warning",
+                        "PDU bytes were not recognised as a known DLMS command.\n"
+                        "Result is a raw data element, not a structured PDU.")
+                self.pdu_input_frame.configure(text="PDU Input (XML)")
+            else:
+                # XML → Hex
+                result = t.xmlToHexPdu(content, addSpace=True)
+                if not result or not result.strip():
+                    messagebox.showwarning("Translation Warning",
+                        "XML was parsed but produced an empty PDU.")
+                self.pdu_input_frame.configure(text="PDU Input (Hex)")
+            self.pdu_input.delete("1.0", "end")
+            self.pdu_input.insert("end", result)
+        except Exception as e:
+            messagebox.showerror("Translation Error", str(e))
+            # Revert the radio button to its previous state
+            self.pdu_mode_var.set("xml" if self.pdu_mode_var.get() == "hex" else "hex")
+
+    def _assemble_custom_frame(self):
+        """
+        Return a list of HDLC frame bytearrays for the raw PDU currently in
+        pdu_input, applying ciphering and LLC bytes according to the options.
+        Raises on any error.
+        """
+        from gurux_dlms.GXDLMS import GXDLMS
+        from gurux_dlms.AesGcmParameter import AesGcmParameter
+        from gurux_dlms.GXCiphering import GXCiphering
+        from gurux_dlms.enums.Command import Command
+        from gurux_dlms.enums.Standard import Standard
+        from gurux_dlms.GXDLMSTranslator import GXDLMSTranslator
+
+        content = self.pdu_input.get("1.0", "end").strip()
+        if not content:
+            raise ValueError("PDU input is empty")
+
+        if self.pdu_mode_var.get() == "xml":
+            t = GXDLMSTranslator()
+            pdu_bytes = bytearray(t.xmlToPdu(content))
+        else:
+            pdu_bytes = bytearray(GXByteBuffer.hexToBytes("".join(content.split())))
+
+        apply_cipher = self.pdu_cipher_var.get()
+        add_llc = self.pdu_llc_var.get()
+
+        if apply_cipher:
+            if not self.client:
+                raise RuntimeError("Not connected – ciphering settings require an active connection")
+            cipher = self.client.ciphering
+
+            # Resolve tag
+            tag_str = self.pdu_tag_var.get()
+            if tag_str.startswith("AUTO"):
+                glo_tag = GXDLMS.getGloMessage(pdu_bytes[0])
+                if glo_tag == 0:
+                    glo_tag = Command.GENERAL_GLO_CIPHERING
+            else:
+                glo_tag = int(tag_str.split()[0], 16)
+
+            # Resolve invocation counter
+            ic_str = self.pdu_ic_var.get().strip()
+            if ic_str.upper() == "AUTO":
+                ic = cipher.invocationCounter
+            else:
+                ic = int(ic_str, 0)
+
+            s = AesGcmParameter(
+                glo_tag,
+                cipher.systemTitle,
+                cipher.blockCipherKey,
+                cipher.authenticationKey,
+            )
+            s.security = cipher.security
+            s.securitySuite = cipher.securitySuite
+            s.invocationCounter = ic
+            s.ignoreSystemTitle = (self.client.standard == Standard.ITALY)
+
+            pdu_bytes = GXCiphering.encrypt(s, pdu_bytes)
+            # Advance the live counter only if AUTO
+            if ic_str.upper() == "AUTO":
+                cipher.invocationCounter += 1
+
+        data_buf = GXByteBuffer()
+        data_buf.set(pdu_bytes)
+
+        if add_llc and self.client:
+            GXDLMS.addLLCBytes(self.client.settings, data_buf)
+
+        # Resolve frame type
+        ft_str = self.pdu_frame_type_var.get().strip()
+        if ft_str.upper() == "AUTO":
+            frame_id = 0  # 0 signals getHdlcFrame to call getNextSend(True)
+        else:
+            frame_id = int(ft_str, 16)
+
+        frames = []
+        if self.client and self.client.interfaceType in (
+            InterfaceType.HDLC,
+            InterfaceType.HDLC_WITH_MODE_E,
+        ):
+            first = True
+            while data_buf.position < len(data_buf):
+                hdlc = GXDLMS.getHdlcFrame(self.client.settings, frame_id, data_buf)
+                frames.append(hdlc)
+                if first and ft_str.upper() == "AUTO":
+                    # senderFrame was advanced by getNextSend(True) inside getHdlcFrame;
+                    # subsequent segments use getNextSend(False)
+                    first = False
+                frame_id = self.client.settings.getNextSend(False)
+        else:
+            # Wrapper / PDU mode – return raw bytes as single "frame"
+            frames.append(bytes(data_buf.array()))
+
+        return frames
+
+    def _build_custom_frame_preview(self):
+        try:
+            frames = self._assemble_custom_frame()
+            combined = b"".join(frames)
+            self.pdu_built_text.configure(state="normal")
+            self.pdu_built_text.delete("1.0", "end")
+            self.pdu_built_text.insert("end", GXByteBuffer.hex(combined))
+            self.pdu_built_text.configure(state="disabled")
+        except Exception as e:
+            messagebox.showerror("Build Error", str(e))
+
+    def _send_custom_pdu_frame(self):
+        if not self.reader:
+            messagebox.showerror("Error", "Not connected")
+            return
+        try:
+            frames = self._assemble_custom_frame()
+        except Exception as e:
+            messagebox.showerror("Build Error", str(e))
+            return
+
+        # Show what we are about to send
+        combined = b"".join(frames)
+        self.pdu_built_text.configure(state="normal")
+        self.pdu_built_text.delete("1.0", "end")
+        self.pdu_built_text.insert("end", GXByteBuffer.hex(combined))
+        self.pdu_built_text.configure(state="disabled")
+
+        self.pdu_rx_text.configure(state="normal")
+        self.pdu_rx_text.delete("1.0", "end")
+        self.pdu_rx_text.insert("end", "Sending...\n")
+        self.pdu_rx_text.configure(state="disabled")
+        self.pdu_send_btn.configure(state="disabled")
+
+        threading.Thread(target=self._send_custom_pdu_worker, args=(frames,), daemon=True).start()
+
+    def _send_custom_pdu_worker(self, frames):
+        from gurux_dlms import GXReplyData
+        from gurux_dlms.GXByteBuffer import GXByteBuffer as _BB
+
+        def finish(text):
+            self.pdu_rx_text.configure(state="normal")
+            self.pdu_rx_text.delete("1.0", "end")
+            self.pdu_rx_text.insert("end", text)
+            self.pdu_rx_text.configure(state="disabled")
+            self.pdu_send_btn.configure(state="normal")
+
+        def _receive_one(media, p, all_rx, rd):
+            """Receive bytes until a complete HDLC frame (ends with 0x7E)."""
+            if not media.receive(p):
+                return False
+            chunk = bytearray(p.reply) if p.reply else bytearray()
+            all_rx.extend(chunk)
+            rd.set(chunk)
+            p.reply = None
+            return True
+
+        try:
+            p = ReceiveParameters()
+            p.eop = 0x7E
+            p.allData = True
+            p.waitTime = RECEIVE_TIMEOUT_MS
+            p.count = 5
+
+            all_rx = bytearray()
+            reply = GXReplyData()
+            rd = _BB()
+
+            media = self.media
+            client = self.client
+
+            # Send request
+            for frame in frames:
+                media.send(bytearray(frame))
+
+            # Receive first response frame
+            while not client.getData(rd, reply):
+                if not _receive_one(media, p, all_rx, rd):
+                    break
+
+            # Handle HDLC segmentation or block transfer
+            while reply.isMoreData():
+                rr = client.receiverReady(reply)
+                for f in (rr if isinstance(rr, list) else [rr]):
+                    media.send(bytearray(f))
+                rd.clear()
+                while not client.getData(rd, reply):
+                    if not _receive_one(media, p, all_rx, rd):
+                        break
+
+            result = GXByteBuffer.hex(all_rx) if all_rx else "Timeout: No response received."
+            self.root.after(0, finish, result)
+
+        except Exception as e:
+            self.root.after(0, finish, f"Error: {str(e)}")
+
 
 def main():
     root = tk.Tk()

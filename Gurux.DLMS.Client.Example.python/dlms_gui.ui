@@ -1,0 +1,921 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ui version="4.0">
+ <class>MainWindow</class>
+ <widget class="QMainWindow" name="MainWindow">
+  <property name="geometry">
+   <rect>
+    <x>0</x>
+    <y>0</y>
+    <width>1400</width>
+    <height>900</height>
+   </rect>
+  </property>
+  <property name="windowTitle">
+   <string>DLMS GUI — AZKA TECHNOLOGY</string>
+  </property>
+  <widget class="QWidget" name="centralWidget">
+   <layout class="QHBoxLayout" name="mainHLayout">
+    <item>
+     <widget class="QSplitter" name="mainSplitter">
+      <property name="orientation">
+       <enum>Qt::Horizontal</enum>
+      </property>
+      <widget class="QTabWidget" name="mainTabWidget">
+       <property name="tabPosition">
+        <enum>QTabWidget::North</enum>
+       </property>
+       <widget class="QWidget" name="tabEngineering">
+        <attribute name="title">
+         <string>Engineering</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="engVLayout">
+         <item>
+          <widget class="QTabWidget" name="engTabWidget">
+           <widget class="QWidget" name="tabConfiguration">
+            <attribute name="title">
+             <string>Configuration</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="cfgVLayout">
+             <item>
+              <widget class="QGroupBox" name="connGroupBox">
+               <property name="title">
+                <string>Connection Settings</string>
+               </property>
+               <layout class="QGridLayout" name="connGridLayout">
+                <item row="0" column="0">
+                 <widget class="QLabel" name="lblPort">
+                  <property name="text"><string>COM Port</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QComboBox" name="cmbPort">
+                  <property name="editable"><bool>true</bool></property>
+                  <property name="minimumWidth"><number>90</number></property>
+                 </widget>
+                </item>
+                <item row="0" column="2">
+                 <widget class="QPushButton" name="btnRefreshPorts">
+                  <property name="text"><string>Refresh</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="3">
+                 <widget class="QLabel" name="lblClient">
+                  <property name="text"><string>Client</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="4">
+                 <widget class="QSpinBox" name="spinClient">
+                  <property name="minimum"><number>1</number></property>
+                  <property name="maximum"><number>127</number></property>
+                  <property name="value"><number>1</number></property>
+                  <property name="maximumWidth"><number>70</number></property>
+                 </widget>
+                </item>
+                <item row="0" column="5">
+                 <widget class="QLabel" name="lblLogical">
+                  <property name="text"><string>Logical</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="6">
+                 <widget class="QSpinBox" name="spinLogical">
+                  <property name="minimum"><number>0</number></property>
+                  <property name="maximum"><number>9999</number></property>
+                  <property name="value"><number>1</number></property>
+                  <property name="maximumWidth"><number>70</number></property>
+                 </widget>
+                </item>
+                <item row="0" column="7">
+                 <widget class="QLabel" name="lblPhysical">
+                  <property name="text"><string>Physical</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="8">
+                 <widget class="QSpinBox" name="spinPhysical">
+                  <property name="minimum"><number>0</number></property>
+                  <property name="maximum"><number>9999</number></property>
+                  <property name="value"><number>18</number></property>
+                  <property name="maximumWidth"><number>70</number></property>
+                 </widget>
+                </item>
+                <item row="0" column="9">
+                 <widget class="QLabel" name="lblAuth">
+                  <property name="text"><string>Auth</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="10">
+                 <widget class="QComboBox" name="cmbAuth">
+                  <item><property name="text"><string>NONE</string></property></item>
+                  <item><property name="text"><string>LOW</string></property></item>
+                  <item><property name="text"><string>HIGH</string></property></item>
+                  <item><property name="text"><string>HIGH_GMAC</string></property></item>
+                 </widget>
+                </item>
+                <item row="0" column="11">
+                 <widget class="QLabel" name="lblSecurity">
+                  <property name="text"><string>Security</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="12">
+                 <widget class="QComboBox" name="cmbSecurity">
+                  <item><property name="text"><string>NONE</string></property></item>
+                  <item><property name="text"><string>AUTHENTICATION</string></property></item>
+                  <item><property name="text"><string>ENCRYPTION</string></property></item>
+                  <item><property name="text"><string>AUTHENTICATION_ENCRYPTION</string></property></item>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QLabel" name="lblSysTitle">
+                  <property name="text"><string>System Title (Hex/Str)</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="1" colspan="2">
+                 <widget class="QLineEdit" name="editSysTitle">
+                  <property name="text"><string>SACSACSA</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="3">
+                 <widget class="QLabel" name="lblBlockKey">
+                  <property name="text"><string>Block Key</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="4" colspan="4">
+                 <widget class="QLineEdit" name="editBlockKey">
+                  <property name="text"><string>7ADF639CA79632FCA3D7810BE6416ABE</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="8">
+                 <widget class="QLabel" name="lblAuthKey">
+                  <property name="text"><string>Auth Key</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="9" colspan="4">
+                 <widget class="QLineEdit" name="editAuthKey">
+                  <property name="text"><string>7ADF639CA79632FCA3D7810BE6416ABE</string></property>
+                 </widget>
+                </item>
+                <item row="2" column="0">
+                 <widget class="QLabel" name="lblStandard">
+                  <property name="text"><string>Standard</string></property>
+                 </widget>
+                </item>
+                <item row="2" column="1">
+                 <widget class="QComboBox" name="cmbStandard">
+                  <item><property name="text"><string>DLMS</string></property></item>
+                  <item><property name="text"><string>ITALY</string></property></item>
+                  <item><property name="text"><string>INDIA</string></property></item>
+                  <item><property name="text"><string>SAUDI_ARABIA</string></property></item>
+                  <item><property name="text"><string>SPAIN</string></property></item>
+                 </widget>
+                </item>
+                <item row="2" column="2">
+                 <widget class="QPushButton" name="btnConnect">
+                  <property name="text"><string>Connect</string></property>
+                 </widget>
+                </item>
+                <item row="2" column="3">
+                 <widget class="QPushButton" name="btnDisconnect">
+                  <property name="text"><string>Disconnect</string></property>
+                 </widget>
+                </item>
+                <item row="2" column="4">
+                 <widget class="QPushButton" name="btnSaveAssocView">
+                  <property name="text"><string>Save Assoc View</string></property>
+                 </widget>
+                </item>
+				<item row="3" column="0" colspan="13">
+				<widget class="QGroupBox" name="keepAliveGroup">
+					<property name="title">
+					<string>Keep-Alive</string>
+					</property>
+					<layout class="QHBoxLayout" name="keepAliveLayout">
+					<item>
+					<widget class="QCheckBox" name="chkKeepAlive">
+					<property name="text">
+						<string>Enable Keep-Alive</string>
+					</property>
+					<property name="checked">
+						<bool>false</bool>
+					</property>
+					</widget>
+					</item>
+					<item>
+					<widget class="QLabel" name="lblKeepAliveInterval">
+					<property name="text">
+						<string>Interval (seconds):</string>
+					</property>
+					</widget>
+					</item>
+					<item>
+					<widget class="QSpinBox" name="spinKeepAliveInterval">
+					<property name="minimum">
+						<number>10</number>
+					</property>
+					<property name="maximum">
+						<number>300</number>
+					</property>
+					<property name="value">
+						<number>30</number>
+					</property>
+					<property name="suffix">
+						<string> sec</string>
+					</property>
+					</widget>
+					</item>
+					<item>
+					<spacer>
+					<property name="orientation">
+						<enum>Qt::Horizontal</enum>
+					</property>
+					<property name="sizeHint" stdset="0">
+						<size>
+						<width>40</width>
+						<height>20</height>
+						</size>
+					</property>
+					</spacer>
+					</item>
+                </layout>
+               </widget>
+              </item>
+               </layout>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="tabOBIS">
+            <attribute name="title">
+             <string>OBIS</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="obisVLayout">
+             <item>
+              <widget class="QSplitter" name="obisSplitter">
+               <property name="orientation">
+                <enum>Qt::Vertical</enum>
+               </property>
+               <widget class="QWidget" name="obisTopWidget">
+                <layout class="QVBoxLayout" name="obisTopLayout">
+                 <item>
+                  <widget class="QTreeWidget" name="obisTree">
+                   <column><property name="text"><string>Logical Name</string></property></column>
+                   <column><property name="text"><string>Name</string></property></column>
+                   <column><property name="text"><string>Type</string></property></column>
+                  </widget>
+                 </item>
+                 <item>
+                  <layout class="QHBoxLayout" name="obisCtrlLayout">
+                   <item>
+                    <widget class="QLabel" name="lblSelOBIS">
+                     <property name="text"><string>Selected OBIS:</string></property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QLineEdit" name="editSelOBIS">
+                     <property name="readOnly"><bool>false</bool></property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QPushButton" name="btnRefreshOBIS">
+                     <property name="text"><string>Refresh OBIS</string></property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QPushButton" name="btnSelectObject">
+                     <property name="text"><string>Select Object</string></property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </item>
+                 <item>
+                  <layout class="QHBoxLayout">
+                   <item>
+                    <widget class="QLabel" name="lblTypeDesc">
+                     <property name="text"><string>Type:</string></property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QLabel" name="lblTypeDescValue">
+                     <property name="text"><string></string></property>
+                     <property name="wordWrap"><bool>true</bool></property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </item>
+                </layout>
+               </widget>
+               <widget class="QWidget" name="obisBottomWidget">
+                <layout class="QVBoxLayout" name="obisBottomLayout">
+                 <item>
+                  <widget class="QLabel" name="lblAttributes">
+                   <property name="text"><string>Attributes</string></property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QTreeWidget" name="attrsTree">
+                   <property name="alternatingRowColors"><bool>true</bool></property>
+                   <column><property name="text"><string>Attr</string></property></column>
+                   <column><property name="text"><string>Name</string></property></column>
+                   <column><property name="text"><string>Right</string></property></column>
+                   <column><property name="text"><string>Type</string></property></column>
+                   <column><property name="text"><string>Value</string></property></column>
+                  </widget>
+                 </item>
+                 <item>
+                  <layout class="QHBoxLayout" name="attrOpsLayout">
+                   <item>
+                    <widget class="QLabel" name="lblAttrEditor">
+                     <property name="text"><string>Editor:</string></property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QLineEdit" name="editAttrValue">
+                     <property name="placeholderText"><string>Attribute value</string></property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QPushButton" name="btnAdvancedEditor">
+                     <property name="text"><string>Advanced Editor...</string></property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QPushButton" name="btnReadSelected">
+                     <property name="text"><string>Read Selected</string></property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QPushButton" name="btnWriteSelected">
+                     <property name="text"><string>Write Selected</string></property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </item>
+                 <item>
+                  <widget class="QLabel" name="lblMethods">
+                   <property name="text"><string>Methods</string></property>
+                  </widget>
+                 </item>
+                 <item>
+                  <widget class="QTreeWidget" name="methodsTree">
+                   <property name="alternatingRowColors"><bool>true</bool></property>
+                   <column><property name="text"><string>Method</string></property></column>
+                   <column><property name="text"><string>Name</string></property></column>
+                   <column><property name="text"><string>Right</string></property></column>
+                  </widget>
+                 </item>
+                 <item>
+                  <layout class="QHBoxLayout" name="methodOpsLayout">
+                   <item>
+                    <widget class="QLabel" name="lblParamType">
+                     <property name="text"><string>Param Type</string></property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QComboBox" name="cmbMethodType">
+                     <item><property name="text"><string>NONE</string></property></item>
+                     <item><property name="text"><string>BOOLEAN</string></property></item>
+                     <item><property name="text"><string>INT8</string></property></item>
+                     <item><property name="text"><string>INT16</string></property></item>
+                     <item><property name="text"><string>INT32</string></property></item>
+                     <item><property name="text"><string>INT64</string></property></item>
+                     <item><property name="text"><string>UINT8</string></property></item>
+                     <item><property name="text"><string>UINT16</string></property></item>
+                     <item><property name="text"><string>UINT32</string></property></item>
+                     <item><property name="text"><string>UINT64</string></property></item>
+                     <item><property name="text"><string>OCTET_STRING</string></property></item>
+                     <item><property name="text"><string>STRING</string></property></item>
+                     <item><property name="text"><string>DATETIME</string></property></item>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QLabel" name="lblParamValue">
+                     <property name="text"><string>Param Value</string></property>
+                    </widget>
+                   </item>
+                   <item>
+                    <widget class="QLineEdit" name="editMethodValue"/>
+                   </item>
+                   <item>
+                    <widget class="QPushButton" name="btnRunMethod">
+                     <property name="text"><string>Run Method</string></property>
+                    </widget>
+                   </item>
+                  </layout>
+                 </item>
+                </layout>
+               </widget>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="tabManualHDLC">
+            <attribute name="title">
+             <string>Manual HDLC</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="hdlcVLayout">
+             <item>
+              <widget class="QGroupBox" name="grpTX">
+               <property name="title"><string>TX Frame (Hex)</string></property>
+               <layout class="QVBoxLayout">
+                <item>
+                 <widget class="QPlainTextEdit" name="txText">
+                  <property name="font">
+                   <font><family>Consolas</family><pointsize>10</pointsize></font>
+                  </property>
+                  <property name="placeholderText"><string>Enter hex bytes separated by spaces, e.g.: 7E A0 08 ...</string></property>
+                 </widget>
+                </item>
+                <item>
+                 <layout class="QHBoxLayout">
+                  <item><spacer><property name="orientation"><enum>Qt::Horizontal</enum></property></spacer></item>
+                  <item>
+                   <widget class="QPushButton" name="btnSendRaw">
+                    <property name="text"><string>Send Frame</string></property>
+                   </widget>
+                  </item>
+                 </layout>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="grpRX">
+               <property name="title"><string>RX Frame (Hex)</string></property>
+               <layout class="QVBoxLayout">
+                <item>
+                 <widget class="QPlainTextEdit" name="rxText">
+                  <property name="readOnly"><bool>true</bool></property>
+                  <property name="font">
+                   <font><family>Consolas</family><pointsize>10</pointsize></font>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="tabCustomPDU">
+            <attribute name="title">
+             <string>Custom PDU</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="pduVLayout">
+             <item>
+              <widget class="QGroupBox" name="grpPDUInput">
+               <property name="title"><string>PDU Input (Hex)</string></property>
+               <layout class="QVBoxLayout">
+                <item>
+                 <layout class="QHBoxLayout">
+                  <item>
+                   <widget class="QLabel" name="lblPDUMode">
+                    <property name="text"><string>Input mode:</string></property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QRadioButton" name="radioPDUHex">
+                    <property name="text"><string>Hex</string></property>
+                    <property name="checked"><bool>true</bool></property>
+                   </widget>
+                  </item>
+                  <item>
+                   <widget class="QRadioButton" name="radioPDUXml">
+                    <property name="text"><string>XML</string></property>
+                   </widget>
+                  </item>
+                  <item><spacer><property name="orientation"><enum>Qt::Horizontal</enum></property></spacer></item>
+                 </layout>
+                </item>
+                <item>
+                 <widget class="QPlainTextEdit" name="pduInput">
+                  <property name="font"><font><family>Consolas</family><pointsize>10</pointsize></font></property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="grpPDUOptions">
+               <property name="title"><string>Wrapping Options</string></property>
+               <layout class="QGridLayout" name="pduOptsGrid">
+                <item row="0" column="0">
+                 <widget class="QCheckBox" name="chkApplyCipher">
+                  <property name="text"><string>Apply Ciphering</string></property>
+                  <property name="checked"><bool>true</bool></property>
+                 </widget>
+                </item>
+                <item row="0" column="1">
+                 <widget class="QLabel" name="lblCipherTag">
+                  <property name="text"><string>Cipher Tag</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="2">
+                 <widget class="QComboBox" name="cmbCipherTag">
+                  <item><property name="text"><string>AUTO (from PDU byte 0)</string></property></item>
+                  <item><property name="text"><string>0xC8  GLO_GET_REQUEST</string></property></item>
+                  <item><property name="text"><string>0xC9  GLO_SET_REQUEST</string></property></item>
+                  <item><property name="text"><string>0xCB  GLO_METHOD_REQUEST</string></property></item>
+                  <item><property name="text"><string>0xDB  GENERAL_GLO_CIPHERING</string></property></item>
+                 </widget>
+                </item>
+                <item row="0" column="3">
+                 <widget class="QCheckBox" name="chkAddLLC">
+                  <property name="text"><string>Add LLC Bytes</string></property>
+                  <property name="checked"><bool>true</bool></property>
+                 </widget>
+                </item>
+                <item row="0" column="4">
+                 <widget class="QLabel" name="lblInvCounter">
+                  <property name="text"><string>Invocation Counter</string></property>
+                 </widget>
+                </item>
+                <item row="0" column="5">
+                 <widget class="QLineEdit" name="editInvCounter">
+                  <property name="text"><string>AUTO</string></property>
+                  <property name="maximumWidth"><number>100</number></property>
+                 </widget>
+                </item>
+                <item row="1" column="0">
+                 <widget class="QLabel" name="lblFrameType">
+                  <property name="text"><string>Frame Type (hex)</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="1">
+                 <widget class="QLineEdit" name="editFrameType">
+                  <property name="text"><string>0xDC</string></property>
+                  <property name="maximumWidth"><number>80</number></property>
+                 </widget>
+                </item>
+                <item row="1" column="2">
+                 <widget class="QLabel" name="lblFrameTypeHint">
+                  <property name="text"><string>(AUTO = use getNextSend)</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="4">
+                 <widget class="QPushButton" name="btnBuildFrame">
+                  <property name="text"><string>Build Frame</string></property>
+                 </widget>
+                </item>
+                <item row="1" column="5">
+                 <widget class="QPushButton" name="btnSendPDU">
+                  <property name="text"><string>Send Frame</string></property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="grpBuiltFrame">
+               <property name="title"><string>Built Frame (Hex)</string></property>
+               <layout class="QVBoxLayout">
+                <item>
+                 <widget class="QPlainTextEdit" name="pduBuiltText">
+                  <property name="readOnly"><bool>true</bool></property>
+                  <property name="font"><font><family>Consolas</family><pointsize>10</pointsize></font></property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QGroupBox" name="grpPDURX">
+               <property name="title"><string>RX Response (Hex)</string></property>
+               <layout class="QVBoxLayout">
+                <item>
+                 <widget class="QPlainTextEdit" name="pduRxText">
+                  <property name="readOnly"><bool>true</bool></property>
+                  <property name="font"><font><family>Consolas</family><pointsize>10</pointsize></font></property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+		   <widget class="QWidget" name="tabTasks">
+            <attribute name="title">
+             <string>Tasks</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="tasksVLayout">
+             <item>
+              <widget class="QGroupBox" name="tasksControlGroup">
+               <property name="title">
+                <string>Task Controls</string>
+               </property>
+               <layout class="QHBoxLayout" name="tasksControlLayout">
+                <item>
+                 <widget class="QPushButton" name="btnAddTask">
+                  <property name="text">
+                   <string>Add Task</string>
+                  </property>
+                  <property name="icon">
+                   <iconset theme="list-add"/>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnEditTask">
+                  <property name="text">
+                   <string>Edit Task</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnRemoveTask">
+                  <property name="text">
+                   <string>Remove Task</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QCheckBox" name="chkListMode">
+                  <property name="text">
+                   <string>Use WithList Commands</string>
+                  </property>
+                  <property name="checked">
+                   <bool>true</bool>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <widget class="QLabel" name="lblMaxItems">
+                  <property name="text">
+                   <string>Max per group: 10</string>
+                  </property>
+                 </widget>
+                </item>
+                <item>
+                 <spacer>
+                  <property name="orientation">
+                   <enum>Qt::Horizontal</enum>
+                  </property>
+                  <property name="sizeHint" stdset="0">
+                   <size>
+                    <width>40</width>
+                    <height>20</height>
+                   </size>
+                  </property>
+                 </spacer>
+                </item>
+                <item>
+                 <widget class="QPushButton" name="btnRunTasks">
+                  <property name="text">
+                   <string>Run Tasks</string>
+                  </property>
+                  <property name="styleSheet">
+                   <string>background-color: #4CAF50; color: white; font-weight: bold;</string>
+                  </property>
+                 </widget>
+                </item>
+               </layout>
+              </widget>
+             </item>
+             <item>
+              <widget class="QTreeWidget" name="tasksTree">
+               <property name="alternatingRowColors">
+                <bool>true</bool>
+               </property>
+               <property name="selectionBehavior">
+                <enum>QAbstractItemView::SelectRows</enum>
+               </property>
+               <property name="columnCount">
+                <number>7</number>
+               </property>
+               <column>
+                <property name="text">
+                 <string>Run</string>
+                </property>
+                <property name="width">
+                 <number>50</number>
+                </property>
+               </column>
+               <column>
+                <property name="text">
+                 <string>Type</string>
+                </property>
+               </column>
+               <column>
+                <property name="text">
+                 <string>OBIS</string>
+                </property>
+               </column>
+               <column>
+                <property name="text">
+                 <string>Attribute/Method</string>
+                </property>
+               </column>
+               <column>
+                <property name="text">
+                 <string>Data/Params</string>
+                </property>
+               </column>
+               <column>
+                <property name="text">
+                 <string>Response</string>
+                </property>
+               </column>
+               <column>
+                <property name="text">
+                 <string>Status</string>
+                </property>
+               </column>
+              </widget>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="tabTests">
+            <attribute name="title">
+             <string>Tests</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="testsVLayout">
+             <item>
+              <layout class="QHBoxLayout">
+               <item>
+                <widget class="QPushButton" name="btnAddTestFile">
+                 <property name="text"><string>Add Test File</string></property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="btnClearTestFiles">
+                 <property name="text"><string>Clear Test Files</string></property>
+                </widget>
+               </item>
+               <item><spacer><property name="orientation"><enum>Qt::Horizontal</enum></property></spacer></item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QListWidget" name="testsList"/>
+             </item>
+             <item>
+              <layout class="QHBoxLayout">
+               <item>
+                <widget class="QPushButton" name="btnCollectTests">
+                 <property name="text"><string>Collect Tests</string></property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="btnRunSelected">
+                 <property name="text"><string>Run Selected</string></property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QPushButton" name="btnRunAll">
+                 <property name="text"><string>Run All</string></property>
+                </widget>
+               </item>
+               <item><spacer><property name="orientation"><enum>Qt::Horizontal</enum></property></spacer></item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
+           <widget class="QWidget" name="tabBugs">
+            <attribute name="title">
+             <string>Bugs</string>
+            </attribute>
+            <layout class="QVBoxLayout" name="bugsVLayout">
+             <item>
+              <layout class="QGridLayout" name="bugsCredsGrid">
+               <item row="0" column="0">
+                <widget class="QLabel" name="lblAzureUrlBug">
+                 <property name="text"><string>Azure URL</string></property>
+                </widget>
+               </item>
+               <item row="0" column="1">
+                <widget class="QLineEdit" name="editAzureUrl">
+                 <property name="placeholderText"><string>https://dev.azure.com/{org}/{project}/...</string></property>
+                </widget>
+               </item>
+               <item row="0" column="2">
+                <widget class="QLabel" name="lblPATBug">
+                 <property name="text"><string>PAT</string></property>
+                </widget>
+               </item>
+               <item row="0" column="3">
+                <widget class="QLineEdit" name="editPAT">
+                 <property name="echoMode"><enum>QLineEdit::Password</enum></property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QPlainTextEdit" name="bugText">
+               <property name="placeholderText"><string>Bug description / test output...</string></property>
+              </widget>
+             </item>
+             <item>
+              <layout class="QHBoxLayout">
+               <item>
+                <widget class="QPushButton" name="btnCreateBug">
+                 <property name="text"><string>Create Bug</string></property>
+                </widget>
+               </item>
+               <item><spacer><property name="orientation"><enum>Qt::Horizontal</enum></property></spacer></item>
+              </layout>
+             </item>
+            </layout>
+           </widget>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+       <widget class="QWidget" name="tabManagement">
+        <attribute name="title">
+         <string>Management</string>
+        </attribute>
+        <layout class="QVBoxLayout" name="mgrVLayout">
+         <item>
+          <layout class="QGridLayout" name="mgrCredsGrid">
+           <item row="0" column="0">
+            <widget class="QLabel" name="lblAzureUrlMgr">
+             <property name="text"><string>Azure URL</string></property>
+            </widget>
+           </item>
+           <item row="0" column="1">
+            <widget class="QLineEdit" name="editAzureUrlMgr">
+             <property name="placeholderText"><string>https://dev.azure.com/{org}/{project}/...</string></property>
+            </widget>
+           </item>
+           <item row="0" column="2">
+            <widget class="QLabel" name="lblPATMgr">
+             <property name="text"><string>PAT</string></property>
+            </widget>
+           </item>
+           <item row="0" column="3">
+            <widget class="QLineEdit" name="editPATMgr">
+             <property name="echoMode"><enum>QLineEdit::Password</enum></property>
+            </widget>
+           </item>
+          </layout>
+         </item>
+         <item>
+          <layout class="QHBoxLayout">
+           <item>
+            <widget class="QPushButton" name="btnFetchBugs">
+             <property name="text"><string>Fetch Bugs</string></property>
+            </widget>
+           </item>
+           <item><spacer><property name="orientation"><enum>Qt::Horizontal</enum></property></spacer></item>
+          </layout>
+         </item>
+         <item>
+          <widget class="QTreeWidget" name="bugsTree">
+           <column><property name="text"><string>ID</string></property></column>
+           <column><property name="text"><string>Title</string></property></column>
+           <column><property name="text"><string>State</string></property></column>
+           <column><property name="text"><string>Severity</string></property></column>
+          </widget>
+         </item>
+         <item>
+          <widget class="QLabel" name="statsLabel">
+           <property name="text"><string></string></property>
+          </widget>
+         </item>
+        </layout>
+       </widget>
+      </widget>
+      <widget class="QWidget" name="rightPane">
+       <property name="maximumWidth"><number>380</number></property>
+       <property name="minimumWidth"><number>200</number></property>
+       <layout class="QVBoxLayout" name="rightVLayout">
+        <item>
+         <widget class="QLabel" name="logoLabel">
+          <property name="minimumHeight"><number>120</number></property>
+          <property name="maximumHeight"><number>160</number></property>
+          <property name="alignment">
+           <set>Qt::AlignCenter</set>
+          </property>
+          <property name="text">
+           <string>&lt;span style='font-size:16pt;font-weight:bold;color:#0b4d79'&gt;AZKA TECHNOLOGY&lt;br/&gt;FREE ZONE S.A.E&lt;/span&gt;</string>
+          </property>
+         </widget>
+        </item>
+        <item>
+         <widget class="QGroupBox" name="grpTerminal">
+          <property name="title"><string>TX/RX Terminal</string></property>
+          <layout class="QVBoxLayout" name="termVLayout">
+           <item>
+            <widget class="QPlainTextEdit" name="terminal">
+             <property name="readOnly"><bool>true</bool></property>
+             <property name="font"><font><family>Consolas</family><pointsize>9</pointsize></font></property>
+             <property name="lineWrapMode"><enum>QPlainTextEdit::NoWrap</enum></property>
+            </widget>
+           </item>
+           <item>
+            <layout class="QHBoxLayout">
+             <item>
+              <widget class="QPushButton" name="btnClearTerminal">
+               <property name="text"><string>Clear</string></property>
+              </widget>
+             </item>
+             <item><spacer><property name="orientation"><enum>Qt::Horizontal</enum></property></spacer></item>
+            </layout>
+           </item>
+          </layout>
+         </widget>
+        </item>
+       </layout>
+      </widget>
+     </widget>
+    </item>
+   </layout>
+  </widget>
+  <widget class="QStatusBar" name="mainStatusBar"/>
+ </widget>
+</ui>
