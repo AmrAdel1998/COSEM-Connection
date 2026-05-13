@@ -780,6 +780,16 @@
                       </property>
                      </widget>
                     </item>
+                    <item>
+                     <widget class="QPushButton" name="btnStartReplayTriple">
+                      <property name="text">
+                       <string>Replay each TX ×3 (compare responses)</string>
+                      </property>
+                      <property name="toolTip">
+                       <string>Sends each TX frame three times. Compares each response to the recorded RX (if any) and checks whether all three attempts match each other.</string>
+                      </property>
+                     </widget>
+                    </item>
                    </layout>
                   </widget>
                  </item>

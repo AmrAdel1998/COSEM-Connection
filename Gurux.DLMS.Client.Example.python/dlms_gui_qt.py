@@ -8,6 +8,7 @@ RECEIVE_TIMEOUT_MS = 600000
 
 import os
 import sys
+import ast
 import time
 import json
 import threading
@@ -49,6 +50,8 @@ from gurux_dlms.GXByteBuffer import GXByteBuffer
 from gurux_serial.GXSerial import GXSerial
 from gurux_dlms.GXDLMSConverter import GXDLMSConverter
 from gurux_dlms.GXDateTime import GXDateTime
+from gurux_dlms.GXStructure import GXStructure
+from gurux_dlms.GXArray import GXArray
 
 from GXDLMSSecureClient2 import GXDLMSSecureClient2
 from GXDLMSReader import GXDLMSReader
@@ -266,6 +269,8 @@ class DLMSGUI(QMainWindow):
         self.btnRemoveSelectedFrame.clicked.connect(self.remove_selected_frame)
         self.btnClearFrames.clicked.connect(self.clear_frames)
         self.btnStartReplayFull.clicked.connect(self.start_full_replay_attack)
+        if hasattr(self, "btnStartReplayTriple"):
+            self.btnStartReplayTriple.clicked.connect(self.start_triple_replay_attack)
 
         self.on_meter_disconnect_signal.connect(self._on_meter_disconnect)
 
@@ -871,7 +876,7 @@ class DLMSGUI(QMainWindow):
                 )
                 return
             self._trace(f"write_selected_attr: access check passed")
-            
+
             dt = (
                 obj.getUIDataType(idx)
                 if hasattr(obj, "getUIDataType")
@@ -880,36 +885,9 @@ class DLMSGUI(QMainWindow):
             self._trace(f"write_selected_attr: data type={dt}, int(dt)={int(dt)}")
             s = self.editAttrValue.text().strip()
             self._trace(f"write_selected_attr: input value='{s}'")
-            
-            # Special handling: if object type is DATA (1) and data type is number type, don't convert to GXDateTime!
-            v = None
-            try:
-                v = int(obj.getObjectType())
-            except Exception:
-                pass
-            
-            if v == int(ObjectType.DATA) and idx == 2:
-                # For DATA obj idx=2, try to parse as integer/float first!
-                try:
-                    new_val = int(s)
-                    self._trace(f"write_selected_attr: DATA obj, parsed as integer: {new_val}")
-                except:
-                    try:
-                        new_val = float(s)
-                        self._trace(f"write_selected_attr: DATA obj, parsed as float: {new_val}")
-                    except:
-                        # If not number, fall back to normal parsing!
-                        if hasattr(dt, "name") and dt.name == "NONE":
-                            new_val = self._infer_value_for_none(obj, idx, s)
-                        else:
-                            new_val = self._parse_value(s, dt)
-            else:
-                # Normal handling for other object types!
-                if hasattr(dt, "name") and dt.name == "NONE":
-                    new_val = self._infer_value_for_none(obj, idx, s)
-                else:
-                    new_val = self._parse_value(s, dt)
-            
+
+            new_val = self._resolve_write_parsed_value(obj, idx, s)
+
             self._trace(f"write_selected_attr: parsed value={new_val}, type={type(new_val)}")
             if not self._apply_value(obj, idx, new_val):
                 QMessageBox.critical(
@@ -928,6 +906,29 @@ class DLMSGUI(QMainWindow):
             import traceback
             self._trace(traceback.format_exc())
             QMessageBox.critical(self, "Write Error", f"{str(e)}\nCheck terminal for more details!")
+
+    def _method_invoke_datatype_and_value(self, obj, method_idx, combo_type_name, s_param):
+        """
+        Pick (DataType, value) for GXDLMSClient.method(...).
+        Script table Execute (method 1) must use UINT16 script identifier per COSEM / Gurux
+        (see GXDLMSScriptTable.execute). Using the GUI default INT8 breaks the action PDU.
+        """
+        s = (s_param or "").strip()
+        try:
+            ot = int(obj.getObjectType())
+        except Exception:
+            ot = None
+        if ot == int(ObjectType.SCRIPT_TABLE) and method_idx == 1:
+            v = self._parse_value(s or "0", DataType.UINT16)
+            self._trace(
+                f"_method_invoke: SCRIPT_TABLE method 1 -> UINT16 script id={v!r} (method type combo ignored)"
+            )
+            return DataType.UINT16, v
+        combo = (combo_type_name or "").strip()
+        if not combo or combo == "NONE":
+            return DataType.INT8, 0
+        dt = getattr(DataType, combo)
+        return dt, self._parse_value(s, dt)
 
     def run_selected_method(self):
         try:
@@ -949,12 +950,9 @@ class DLMSGUI(QMainWindow):
                 QMessageBox.critical(self, "Error", f"Access denied: Method {idx}")
                 return
             type_name = self.cmbMethodType.currentText()
-            if not type_name or type_name == "NONE":
-                dt = DataType.INT8
-                val = 0
-            else:
-                dt = getattr(DataType, type_name)
-                val = self._parse_value(self.editMethodValue.text().strip(), dt)
+            s_param = self.editMethodValue.text().strip()
+
+            dt, val = self._method_invoke_datatype_and_value(obj, idx, type_name, s_param)
             data = self.client.method(obj, idx, val, dt)
             reply = self.reader.readDLMSPacket(data)
             self._trace(f"Method {ln} [{idx}] executed. Reply: {reply}")
@@ -1103,11 +1101,9 @@ class DLMSGUI(QMainWindow):
                     self._trace(f"SET completed")
 
                 elif task['type'] == "ACTION":
-                    # Parse method parameters
-                    dt = DataType.INT8
-                    val = 0
-                    if task.get('data'):
-                        val = self._parse_value(task['data'], DataType.INT32)
+                    dt, val = self._method_invoke_datatype_and_value(
+                        obj, task['index'], "", task.get("data", "")
+                    )
                     data = self.client.method(obj, task['index'], val, dt)
                     reply = self.reader.readDLMSPacket(data)
                     item.setText(5, str(reply))
@@ -1509,12 +1505,131 @@ class DLMSGUI(QMainWindow):
         self.recordedFramesTree.clear()
         self._trace("Cleared all recorded frames")
 
+    def _replay_send_receive_bytes(self, data: bytes) -> bytearray:
+        """Send one raw frame and collect one reply (same HDLC/wrapper rules as full replay)."""
+        p = ReceiveParameters()
+        p.waitTime = RECEIVE_TIMEOUT_MS
+        if self.client and self.client.interfaceType == InterfaceType.WRAPPER:
+            p.eop = None
+            p.count = 8
+        else:
+            p.eop = 0x7E
+        full_reply = bytearray()
+        with self.media.getSynchronous():
+            self.media.send(data)
+            while True:
+                if not self.media.receive(p):
+                    break
+                full_reply.extend(p.reply)
+                if len(full_reply) > 1 and full_reply[-1] == 0x7E:
+                    break
+        return full_reply
+
+    def _replay_frames_to_run(self):
+        """Frames to replay and their index in `_recorded_frames` (for finding recorded RX)."""
+        if self.chkOnlyTX.isChecked():
+            return [(i, f) for i, f in enumerate(self._recorded_frames) if f["direction"] == "TX"]
+        return list(enumerate(self._recorded_frames))
+
+    def _recorded_expected_rx(self, rec_idx: int):
+        """Bytes of the RX frame immediately after `rec_idx` in the recording, or None."""
+        if rec_idx + 1 >= len(self._recorded_frames):
+            return None
+        nxt = self._recorded_frames[rec_idx + 1]
+        if nxt["direction"] != "RX":
+            return None
+        return nxt["data"]
+
+    def _triple_replay_rx_verdict(self, full_reply: bytearray, exp_bytes, is_tx_frame: bool):
+        """
+        One-line status for a single send: not received vs received, and right/wrong vs saved RX if possible.
+        Returns (full_status_text, short_tag, row_color).
+        """
+        received = bool(full_reply)
+        has_baseline = exp_bytes is not None
+
+        if not received:
+            if not is_tx_frame:
+                txt = "Not received (timeout) — no RX bytes before timeout"
+                return txt, "NO_RX", Qt.yellow
+            if has_baseline:
+                txt = (
+                    "Not received (timeout) — expected a reply; saved session had an RX after this TX "
+                    "(cannot verify replay)"
+                )
+                return txt, "NO_RX", Qt.yellow
+            txt = (
+                "Not received (timeout) — no RX bytes; recording also has no RX row after this TX "
+                "(nothing to compare)"
+            )
+            return txt, "NO_RX", Qt.yellow
+
+        # Received something
+        if not is_tx_frame:
+            txt = "Received — this row is not a TX in the recording; no RX-vs-recording check"
+            return txt, "RECV", Qt.lightGray
+
+        if not has_baseline:
+            txt = (
+                "Received — cannot classify right/wrong: recording has no RX frame immediately "
+                "after this TX (save TX+RX pairs while recording to enable comparison)"
+            )
+            return txt, "RECV?", Qt.cyan
+
+        if bytes(full_reply) == exp_bytes:
+            txt = "Received — matches saved RX from recording (same bytes)"
+            return txt, "OK", Qt.green
+
+        txt = "Received — wrong vs recording (bytes differ from saved RX after this TX)"
+        return txt, "WRONG", Qt.red
+
+    def _triple_replay_parent_summary(self, replies, exp_bytes, is_tx_frame: bool):
+        """Build parent status text and a background color from the three attempt outcomes."""
+        tags = []
+        details = []
+        for attempt_i, rb in enumerate(replies):
+            full_reply = bytearray(rb)
+            _txt, tag, _c = self._triple_replay_rx_verdict(full_reply, exp_bytes, is_tx_frame)
+            tags.append(tag)
+            details.append(f"Attempt {attempt_i + 1}: {_txt}")
+
+        line = " · ".join(f"A{i + 1}: {t}" for i, t in enumerate(tags))
+
+        r0, r1, r2 = replies[0], replies[1], replies[2]
+        all_same = r0 == r1 == r2
+        all_match_rec = (
+            exp_bytes is not None
+            and is_tx_frame
+            and r0 == exp_bytes
+            and r1 == exp_bytes
+            and r2 == exp_bytes
+        )
+        any_timeout = not (bool(r0) and bool(r1) and bool(r2))
+        any_wrong = False
+        if exp_bytes is not None and is_tx_frame:
+            any_wrong = any(bool(rb) and bytes(rb) != exp_bytes for rb in replies)
+
+        if all_match_rec:
+            summary_bg = Qt.green
+        elif not all_same:
+            summary_bg = Qt.red
+        elif any_timeout:
+            summary_bg = Qt.yellow
+        elif any_wrong and exp_bytes is not None:
+            summary_bg = Qt.yellow
+        elif all_same and not is_tx_frame:
+            summary_bg = Qt.lightGray
+        else:
+            summary_bg = Qt.cyan
+
+        return line, summary_bg, "\n".join(details)
+
     def start_full_replay_attack(self):
         if not self._recorded_frames:
             QMessageBox.warning(self, "Error", "No frames to replay! Record or load a recording first!")
             return
-        tx_frames = [f for f in self._recorded_frames if f["direction"] == "TX"] if self.chkOnlyTX.isChecked() else self._recorded_frames
-        if not tx_frames:
+        pairs = self._replay_frames_to_run()
+        if not pairs:
             QMessageBox.information(self, "Info", "No TX frames to replay!")
             return
         if not self.media or not self.media.isOpen():
@@ -1525,8 +1640,7 @@ class DLMSGUI(QMainWindow):
         delay_ms = self.spinReplayDelay.value()
 
         try:
-            import time
-            for i, frame in enumerate(tx_frames):
+            for i, (_rec_idx, frame) in enumerate(pairs):
                 item = QTreeWidgetItem([
                     str(i + 1),
                     GXByteBuffer.hex(frame["data"]),
@@ -1538,27 +1652,11 @@ class DLMSGUI(QMainWindow):
                 QApplication.processEvents()
 
                 try:
-                    p = ReceiveParameters()
-                    p.waitTime = RECEIVE_TIMEOUT_MS
-                    if self.client and self.client.interfaceType == InterfaceType.WRAPPER:
-                        p.eop = None
-                        p.count = 8
-                    else:
-                        p.eop = 0x7E
-
-                    full_reply = bytearray()
-                    with self.media.getSynchronous():
-                        tx_hex = GXByteBuffer.hex(frame["data"])
-                        self.append_terminal(f"TX (replay): {tx_hex}")
-                        self.media.send(frame["data"])
-                        item.setText(2, tx_hex)
-                        QApplication.processEvents()
-                        while True:
-                            if not self.media.receive(p):
-                                break
-                            full_reply.extend(p.reply)
-                            if len(full_reply) > 1 and full_reply[-1] == 0x7E:
-                                break
+                    tx_hex = GXByteBuffer.hex(frame["data"])
+                    self.append_terminal(f"TX (replay): {tx_hex}")
+                    full_reply = self._replay_send_receive_bytes(frame["data"])
+                    item.setText(2, tx_hex)
+                    QApplication.processEvents()
 
                     reply_hex = GXByteBuffer.hex(full_reply) if full_reply else "Timeout: No response"
                     if full_reply:
@@ -1571,10 +1669,10 @@ class DLMSGUI(QMainWindow):
                         item.setBackground(4, Qt.green)
                     item.setText(3, reply_hex)
                     item.setText(4, status)
-                    self._trace(f"Replay frame {i+1}/{len(tx_frames)}: sent, got {status}")
+                    self._trace(f"Replay frame {i+1}/{len(pairs)}: sent, got {status}")
                     self.update_last_communication()
 
-                    if i < len(tx_frames) - 1:
+                    if i < len(pairs) - 1:
                         time.sleep(delay_ms / 1000.0)
                     QApplication.processEvents()
 
@@ -1592,6 +1690,114 @@ class DLMSGUI(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Replay Attack Error", f"{str(e)}\nCheck terminal for more details!")
             self._trace(f"Replay attack error: {e}")
+            import traceback
+            self._trace(traceback.format_exc())
+
+    def start_triple_replay_attack(self):
+        """Send each replay frame three times; compare responses to each other and to recorded RX."""
+        if not self._recorded_frames:
+            QMessageBox.warning(self, "Error", "No frames to replay! Record or load a recording first!")
+            return
+        pairs = self._replay_frames_to_run()
+        if not pairs:
+            QMessageBox.information(self, "Info", "No frames to replay!")
+            return
+        if not self.media or not self.media.isOpen():
+            QMessageBox.warning(self, "Error", "Not connected to meter! Connect first!")
+            return
+
+        self.replayResultTree.clear()
+        delay_ms = self.spinReplayDelay.value()
+
+        try:
+            for i, (rec_idx, frame) in enumerate(pairs):
+                tx_hex = GXByteBuffer.hex(frame["data"])
+                exp_bytes = self._recorded_expected_rx(rec_idx) if frame["direction"] == "TX" else None
+                exp_hex = GXByteBuffer.hex(exp_bytes) if exp_bytes else ""
+                if frame["direction"] == "TX":
+                    exp_col = exp_hex if exp_hex else "— (no RX row after this TX in recording — cannot verify right/wrong)"
+                else:
+                    exp_col = "— (baseline RX only applies when replaying TX rows)"
+                parent = QTreeWidgetItem([
+                    str(i + 1),
+                    tx_hex,
+                    tx_hex,
+                    exp_col,
+                    "Sending...",
+                ])
+                self.replayResultTree.addTopLevelItem(parent)
+                QApplication.processEvents()
+
+                replies = []
+                is_tx = frame["direction"] == "TX"
+                try:
+                    for attempt in range(3):
+                        self.append_terminal(f"TX (replay ×3, frame {i + 1}/{len(pairs)}, attempt {attempt + 1}/3): {tx_hex}")
+                        full_reply = self._replay_send_receive_bytes(frame["data"])
+                        replies.append(bytes(full_reply))
+                        reply_hex = GXByteBuffer.hex(full_reply) if full_reply else "(no RX — timeout)"
+                        if full_reply:
+                            self.append_terminal(f"RX (replay ×3): {GXByteBuffer.hex(full_reply)}")
+
+                        att_status, _tag, att_bg = self._triple_replay_rx_verdict(
+                            full_reply, exp_bytes, is_tx
+                        )
+
+                        child = QTreeWidgetItem([
+                            "",
+                            f"Attempt {attempt + 1} / 3",
+                            "",
+                            reply_hex,
+                            att_status,
+                        ])
+                        child.setToolTip(4, att_status)
+                        for col in range(5):
+                            child.setBackground(col, att_bg)
+                        parent.addChild(child)
+                        parent.setExpanded(True)
+                        self.update_last_communication()
+                        QApplication.processEvents()
+                        self._trace(
+                            f"Triple replay frame {i + 1}/{len(pairs)}, attempt {attempt + 1}/3: {att_status}"
+                        )
+
+                        if attempt < 2:
+                            time.sleep(delay_ms / 1000.0)
+
+                    short_summary, summary_bg, tip = self._triple_replay_parent_summary(
+                        replies, exp_bytes, is_tx
+                    )
+                    parent.setText(4, short_summary)
+                    parent.setToolTip(4, tip)
+                    for col in range(5):
+                        parent.setBackground(col, summary_bg)
+                    self._trace(
+                        f"Triple replay frame {i + 1}/{len(pairs)} summary: {short_summary}"
+                    )
+
+                    if i < len(pairs) - 1:
+                        time.sleep(delay_ms / 1000.0)
+                    QApplication.processEvents()
+
+                except Exception as e:
+                    parent.setText(4, f"Error: {e}")
+                    parent.setBackground(4, Qt.red)
+                    self._trace(f"Triple replay frame {i + 1} failed: {e}")
+                    import traceback
+                    self._trace(traceback.format_exc())
+
+            QMessageBox.information(
+                self,
+                "Triple Replay Complete",
+                "Each TX was sent 3 times. Expand a row to see every attempt: "
+                "Status says whether RX was missing (timeout), received and matching the recording, "
+                "received but wrong vs recording, or received with no saved baseline. "
+                "Hover the parent row’s Status for full text.",
+            )
+
+        except Exception as e:
+            QMessageBox.critical(self, "Triple Replay Error", f"{str(e)}\nCheck terminal for more details!")
+            self._trace(f"Triple replay error: {e}")
             import traceback
             self._trace(traceback.format_exc())
 
@@ -2072,7 +2278,27 @@ class DLMSGUI(QMainWindow):
 
     def _can_read(self, obj, idx):
         try:
-            s = self._access_str(obj.getAccess3(idx))
+            s = None
+            for getter_name in ("getAccess3", "getAccess"):
+                try:
+                    getter = getattr(obj, getter_name, None)
+                    if getter is None:
+                        continue
+                    cand = self._access_str(getter(idx))
+                    if cand in ("SET", "GET/SET", "GET", "NO_ACCESS"):
+                        s = cand
+                        break
+                except Exception:
+                    continue
+            if not s:
+                try:
+                    att = obj.attributes.find(idx)
+                    if att is not None:
+                        s = self._access_str(att.access)
+                except Exception:
+                    pass
+            if not s:
+                return True
             tname = self._type_name(obj.objectType)
             count = self._attr_count_map.get(tname, 20)
             if idx < 1 or idx > count:
@@ -2084,38 +2310,44 @@ class DLMSGUI(QMainWindow):
     def _can_write(self, obj, idx):
         try:
             s = None
-            try:
-                access_val = obj.getAccess(idx)
-                s = self._access_str(access_val)
-                self._trace(f"_can_write getAccess({idx}) returned {access_val} -> {s}")
-            except:
+            # Prefer getAccess3 (LN-style); fall back to getAccess, then attribute table.
+            for getter_name in ("getAccess3", "getAccess"):
                 try:
-                    access_val = obj.getAccess3(idx)
-                    s = self._access_str(access_val)
-                    self._trace(f"_can_write getAccess3({idx}) returned {access_val} -> {s}")
-                except Exception as e2:
-                    self._trace(f"_can_write both getAccess/getAccess3 failed for idx {idx}: {e2}")
-                    # Fallback to check attributes collection
+                    getter = getattr(obj, getter_name, None)
+                    if getter is None:
+                        continue
+                    access_val = getter(idx)
+                    cand = self._access_str(access_val)
+                    self._trace(f"_can_write {getter_name}({idx}) returned {access_val} -> {cand}")
+                    if cand in ("SET", "GET/SET", "GET", "NO_ACCESS"):
+                        s = cand
+                        break
+                except Exception as e:
+                    self._trace(f"_can_write {getter_name}({idx}) failed: {e}")
+                    continue
+            if not s:
+                try:
                     att = obj.attributes.find(idx)
-                    if att:
+                    if att is not None:
                         s = self._access_str(att.access)
-                        self._trace(f"_can_write using attributes.find({idx}) -> {s}")
+                        self._trace(f"_can_write attributes.find({idx}).access -> {s}")
+                except Exception as e2:
+                    self._trace(f"_can_write attributes.find({idx}) failed: {e2}")
             if not s:
                 self._trace(f"_can_write could not determine access mode for idx {idx}, defaulting to allow")
                 return True
-            
+
             tname = self._type_name(obj.objectType)
             count = self._attr_count_map.get(tname, 20)
             if idx < 1 or idx > count:
                 self._trace(f"_can_write idx {idx} out of range (1-{count}) for {tname}")
                 return False
-            
+
             result = s in ("SET", "GET/SET")
             self._trace(f"_can_write idx {idx} access {s} -> {result}")
             return result
         except Exception as e:
             self._trace(f"_can_write exception: {e}")
-            # Don't block write if access check fails
             return True
 
     def _get_attribute_names(self, obj):
@@ -2162,6 +2394,158 @@ class DLMSGUI(QMainWindow):
         except Exception:
             pass
         return tname
+
+    def _parse_bracket_literal_list(self, s):
+        """Parse `[1, 2, ...]` using ast.literal_eval (safe; supports nested lists)."""
+        s = (s or "").strip()
+        if not (s.startswith("[") and s.endswith("]")):
+            raise ValueError("Value must be a bracketed list, e.g. [1, 2, 3]")
+        parsed = ast.literal_eval(s)
+        if not isinstance(parsed, (list, tuple)):
+            raise ValueError("Expected a list inside [...]")
+        return list(parsed)
+
+    def _coerce_element_to_template(self, template, elem):
+        """Coerce one parsed element to match an existing field from a read (template)."""
+        if isinstance(template, GXStructure):
+            if not isinstance(elem, (list, tuple)):
+                raise ValueError(
+                    "Structure field expects a nested list, e.g. [1, 2] for each sub-structure"
+                )
+            if len(elem) != len(template):
+                raise ValueError(
+                    f"Sub-structure needs {len(template)} elements, got {len(elem)}"
+                )
+            out = GXStructure()
+            for j in range(len(template)):
+                out.append(self._coerce_element_to_template(template[j], elem[j]))
+            return out
+        if isinstance(template, GXArray):
+            if not isinstance(elem, (list, tuple)):
+                raise ValueError("Array field expects a nested list")
+            out = GXArray()
+            if len(template) == 0:
+                for x in elem:
+                    out.append(x)
+                return out
+            tmpl0 = template[0]
+            for x in elem:
+                out.append(self._coerce_element_to_template(tmpl0, x))
+            return out
+        if isinstance(template, bool):
+            if isinstance(elem, bool):
+                return elem
+            return str(elem).lower() in ("true", "1", "yes", "on")
+        if isinstance(template, int):
+            if isinstance(elem, bool):
+                return int(elem)
+            if isinstance(elem, int):
+                return elem
+            if isinstance(elem, str):
+                e = elem.strip()
+                return int(e, 16) if e.lower().startswith("0x") else int(e)
+            return int(elem)
+        if isinstance(template, float):
+            return float(elem)
+        if isinstance(template, (bytes, bytearray)):
+            if isinstance(elem, (bytes, bytearray)):
+                return bytes(elem)
+            return GXByteBuffer.hexToBytes(str(elem).replace(" ", ""))
+        if isinstance(template, str):
+            return str(elem)
+        if isinstance(template, GXDateTime):
+            return self._to_gx_datetime(str(elem), "datetime")
+        try:
+            return type(template)(elem)
+        except Exception:
+            return elem
+
+    def _coerce_write_value_from_template(self, cur, s):
+        """Build GXStructure/GXArray (or compatible) from edit text using shape/types of `cur`."""
+        elems = self._parse_bracket_literal_list(s)
+        if isinstance(cur, GXStructure):
+            if len(elems) != len(cur):
+                raise ValueError(
+                    f"Structure length mismatch: meter value has {len(cur)} fields, "
+                    f"input has {len(elems)}"
+                )
+            out = GXStructure()
+            for i in range(len(cur)):
+                out.append(self._coerce_element_to_template(cur[i], elems[i]))
+            return out
+        if isinstance(cur, GXArray):
+            out = GXArray()
+            if len(cur) == 0:
+                for x in elems:
+                    out.append(x)
+                return out
+            tmpl0 = cur[0]
+            for x in elems:
+                out.append(self._coerce_element_to_template(tmpl0, x))
+            return out
+        if isinstance(cur, (list, tuple)):
+            if len(elems) != len(cur):
+                raise ValueError(
+                    f"List length mismatch: expected {len(cur)} elements, got {len(elems)}"
+                )
+            out = GXStructure()
+            for i in range(len(cur)):
+                out.append(self._coerce_element_to_template(cur[i], elems[i]))
+            return out
+        raise TypeError(
+            f"Cannot infer composite value from template type {type(cur).__name__}"
+        )
+
+    def _snapshot_attr_value(self, obj, idx):
+        """In-memory template for attribute idx (after a read or prior client update)."""
+        try:
+            if idx == 2 and hasattr(obj, "value"):
+                return obj.value
+        except Exception:
+            pass
+        try:
+            if hasattr(obj, "getValues"):
+                vals = obj.getValues()
+                if isinstance(vals, (list, tuple)) and 1 <= idx - 1 < len(vals):
+                    return vals[idx - 1]
+        except Exception:
+            pass
+        return None
+
+    def _resolve_write_parsed_value(self, obj, idx, s):
+        """
+        Parse the attribute edit box into a Python/Gurux value suitable for _apply_value.
+        Handles DataType.NONE by inferring from the last read value (e.g. GXStructure).
+        """
+        s = (s or "").strip()
+        dt = (
+            obj.getUIDataType(idx)
+            if hasattr(obj, "getUIDataType")
+            else obj.getDataType(idx)
+        )
+        self._trace(f"_resolve_write_parsed_value: idx={idx} dt={dt}")
+
+        cur = self._snapshot_attr_value(obj, idx)
+
+        is_none = dt == DataType.NONE or (hasattr(dt, "name") and dt.name == "NONE")
+        if is_none:
+            return self._infer_value_for_none(obj, idx, s)
+
+        t = int(dt)
+        if s.startswith("[") and cur is None and t in (
+            int(DataType.STRUCTURE),
+            int(DataType.ARRAY),
+        ):
+            raise ValueError(
+                "Read this attribute first: STRUCTURE/ARRAY writes need the last read value as a template."
+            )
+        if s.startswith("[") and cur is not None and t in (
+            int(DataType.STRUCTURE),
+            int(DataType.ARRAY),
+        ):
+            return self._coerce_write_value_from_template(cur, s)
+
+        return self._parse_value(s, dt)
 
     def _parse_value(self, s, dt):
         self._trace(f"_parse_value called for s='{s}', dt={dt}, int(dt)={int(dt)}")
@@ -2244,17 +2628,22 @@ class DLMSGUI(QMainWindow):
 
     def _infer_value_for_none(self, obj, idx, s):
         self._trace(f"_infer_value_for_none called for idx={idx}, s='{s}'")
-        # Try to get current value from obj's value property first
-        cur = None
-        try:
-            if idx == 2 and hasattr(obj, "value"):
-                cur = obj.value
-                self._trace(f"_infer_value_for_none: found existing value from value property: {cur}, type: {type(cur)}")
-        except Exception as e:
-            self._trace(f"_infer_value_for_none: value property failed: {e}")
-        
+        cur = self._snapshot_attr_value(obj, idx)
+        if cur is not None:
+            self._trace(
+                f"_infer_value_for_none: template from object: {cur!r}, type: {type(cur)}"
+            )
+
+        if s.startswith("[") and s.endswith("]") and cur is None:
+            raise ValueError(
+                "Composite value [...] needs a prior Read of this attribute (or the value "
+                "is not cached). Read once so the client knows the structure, then edit and Write."
+            )
+
         # If we have current value, infer type from that
         if cur is not None:
+            if isinstance(cur, (GXStructure, GXArray, list, tuple)):
+                return self._coerce_write_value_from_template(cur, s)
             try:
                 if isinstance(cur, (bytes, bytearray)):
                     return GXByteBuffer.hexToBytes(s) if s else cur
@@ -2269,6 +2658,7 @@ class DLMSGUI(QMainWindow):
                 return s
             except Exception as e:
                 self._trace(f"_infer_value_for_none: infer from existing failed: {e}")
+                raise
         
         # Fallback to previous heuristics if no cur
         try:
